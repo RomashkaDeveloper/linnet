@@ -36,11 +36,23 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _provider = ChatDetailProvider(widget.chatId);
-    _provider.load();
+    _provider.load().then((_) {
+      if (mounted) _jumpToBottom();
+    });
     _loadChat();
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.hasClients && _scrollCtrl.position.pixels <= 80) {
         _provider.loadMore();
+      }
+    });
+  }
+
+  /// Instantly positions the list at the newest message — used when the
+  /// chat first opens, so the user isn't dropped at the oldest message.
+  void _jumpToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
       }
     });
   }
@@ -251,11 +263,13 @@ class _ChatScreenState extends State<ChatScreen> {
             },
             child: Row(
               children: [
-                AvatarWidget(
-                  name: chat?.displayName(currentUserId) ?? '',
-                  imageUrl: chat?.type == ChatType.group ? chat?.avatarUrl : otherUser?.avatarUrl,
-                  size: 38,
-                  showOnlineDot: otherUser?.isOnline ?? false,
+                Consumer<ChatDetailProvider>(
+                  builder: (context, p, _) => AvatarWidget(
+                    name: chat?.displayName(currentUserId) ?? '',
+                    imageUrl: chat?.type == ChatType.group ? chat?.avatarUrl : otherUser?.avatarUrl,
+                    size: 38,
+                    showOnlineDot: otherUser != null && p.isUserOnline(otherUser),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -273,7 +287,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (p.typingUserIds.isNotEmpty) {
                           subtitle = 'печатает…';
                         } else if (chat?.type == ChatType.private && otherUser != null) {
-                          subtitle = otherUser.isOnline ? 'в сети' : formatLastSeen(otherUser.lastSeen);
+                          subtitle = p.isUserOnline(otherUser) ? 'в сети' : formatLastSeen(p.lastSeenFor(otherUser));
                         } else if (chat?.type == ChatType.group) {
                           subtitle = '${chat!.members.length} участников';
                         }
@@ -354,7 +368,7 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
-          border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4))),
+          border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.4))),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

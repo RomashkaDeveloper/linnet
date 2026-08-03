@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/message.dart';
+import '../models/user.dart';
 import '../services/message_service.dart';
 import '../services/socket_service.dart';
 
@@ -113,6 +114,13 @@ class ChatDetailProvider extends ChangeNotifier {
   void notifyRead(String messageId) => SocketService.instance.sendRead(chatId, messageId);
 
   void _onEvent(Map<String, dynamic> event) {
+    // presence — это событие про пользователя в целом, а не про конкретный
+    // чат, поэтому оно не содержит chat_id и должно обрабатываться до
+    // фильтра ниже (иначе оно просто отбрасывалось бы).
+    if (event['type'] == 'presence') {
+      _handlePresence(event);
+      return;
+    }
     final eventChatId = event['chat_id'] as String?;
     if (eventChatId != chatId) return;
     switch (event['type']) {
@@ -132,6 +140,26 @@ class ChatDetailProvider extends ChangeNotifier {
         notifyListeners();
         break;
     }
+  }
+
+  /// user_id -> live online status received over the socket, overriding
+  /// whatever was true at the moment the chat/user was first fetched.
+  final Map<String, bool> onlineOverrides = {};
+  final Map<String, DateTime> lastSeenOverrides = {};
+
+  bool isUserOnline(UserPublic user) => onlineOverrides[user.id] ?? user.isOnline;
+
+  DateTime lastSeenFor(UserPublic user) => lastSeenOverrides[user.id] ?? user.lastSeen;
+
+  void _handlePresence(Map<String, dynamic> event) {
+    final userId = event['user_id'] as String?;
+    final isOnline = event['is_online'] as bool?;
+    if (userId == null || isOnline == null) return;
+    onlineOverrides[userId] = isOnline;
+    if (!isOnline) {
+      lastSeenOverrides[userId] = DateTime.now();
+    }
+    notifyListeners();
   }
 
   void _handleIncoming(Map<String, dynamic> event) {

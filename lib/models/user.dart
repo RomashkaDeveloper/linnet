@@ -29,6 +29,16 @@ class UserPublic {
 
   String get displayName =>
       (fullName != null && fullName!.trim().isNotEmpty) ? fullName! : username;
+
+  UserPublic copyWith({bool? isOnline, DateTime? lastSeen}) => UserPublic(
+        id: id,
+        username: username,
+        fullName: fullName,
+        bio: bio,
+        avatarUrl: avatarUrl,
+        isOnline: isOnline ?? this.isOnline,
+        lastSeen: lastSeen ?? this.lastSeen,
+      );
 }
 
 class UserPrivate extends UserPublic {

@@ -53,12 +53,37 @@ class ChatListProvider extends ChangeNotifier {
         if (chatId != null) refreshChat(chatId);
         break;
       case 'presence':
-        // Пересобираем список, чтобы виджеты, слушающие chats, перерисовались
-        // с новым статусом "в сети" (сам статус хранится в объекте User,
-        // поэтому полноценно обновляется при следующей загрузке/refreshChat).
-        notifyListeners();
+        _handlePresence(event);
         break;
     }
+  }
+
+  void _handlePresence(Map<String, dynamic> event) {
+    final userId = event['user_id'] as String?;
+    final isOnline = event['is_online'] as bool?;
+    if (userId == null || isOnline == null) return;
+    bool changed = false;
+    for (var i = 0; i < chats.length; i++) {
+      final chat = chats[i];
+      final memberIdx = chat.members.indexWhere((m) => m.user.id == userId);
+      if (memberIdx == -1) continue;
+      final oldMember = chat.members[memberIdx];
+      final updatedUser = oldMember.user.copyWith(
+        isOnline: isOnline,
+        // Пока не в сети — фиксируем момент, когда получили это событие,
+        // как приблизительное время последнего захода.
+        lastSeen: isOnline ? oldMember.user.lastSeen : DateTime.now(),
+      );
+      final updatedMembers = List<ChatMemberOut>.from(chat.members);
+      updatedMembers[memberIdx] = ChatMemberOut(
+        user: updatedUser,
+        role: oldMember.role,
+        joinedAt: oldMember.joinedAt,
+      );
+      chats[i] = chat.copyWith(members: updatedMembers);
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   void _handleNewMessage(Map<String, dynamic> event) {
@@ -102,6 +127,27 @@ class ChatListProvider extends ChangeNotifier {
     if (idx != -1) {
       chats[idx] = chats[idx].copyWith(unreadCount: 0);
       notifyListeners();
+    }
+  }
+
+  /// Removes a chat from the user's list. The API only exposes
+  /// `/chats/{id}/leave` (no dedicated "delete" endpoint), so deleting a
+  /// chat here means leaving it — for a private chat that just removes it
+  /// from your own list; for a group it also removes you as a member.
+  Future<void> deleteChat(String chatId) async {
+    final idx = chats.indexWhere((c) => c.id == chatId);
+    if (idx == -1) return;
+    final removed = chats[idx];
+    chats.removeAt(idx);
+    notifyListeners();
+    try {
+      await _service.leaveChat(chatId);
+    } catch (e) {
+      // Не удалось на сервере — возвращаем чат обратно в список.
+      chats.insert(idx, removed);
+      _sortChats();
+      notifyListeners();
+      rethrow;
     }
   }
 

@@ -32,6 +32,56 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  void _showChatOptions(ChatOut chat, String currentUserId) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Удалить чат', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDeleteChat(chat, currentUserId);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteChat(ChatOut chat, String currentUserId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить чат?'),
+        content: Text(
+          chat.type == ChatType.group
+              ? 'Вы покинете группу «${chat.displayName(currentUserId)}» и она исчезнет из списка чатов.'
+              : 'Переписка с ${chat.displayName(currentUserId)} исчезнет из вашего списка чатов.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await context.read<ChatListProvider>().deleteChat(chat.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Не удалось удалить чат: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -126,6 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             .push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: chat.id)));
                         if (mounted) context.read<ChatListProvider>().refreshChat(chat.id);
                       },
+                      onLongPress: () => _showChatOptions(chat, currentUserId),
                     );
                   },
                 ),

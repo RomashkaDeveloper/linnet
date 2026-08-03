@@ -8,12 +8,14 @@ class ChatListTile extends StatelessWidget {
   final ChatOut chat;
   final String currentUserId;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const ChatListTile({
     super.key,
     required this.chat,
     required this.currentUserId,
     required this.onTap,
+    this.onLongPress,
   });
 
   String _preview() {
@@ -96,6 +98,7 @@ class ChatListTile extends StatelessWidget {
         ],
       ),
       onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }
