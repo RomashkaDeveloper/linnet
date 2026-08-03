@@ -21,15 +21,18 @@ class ChatDetailProvider extends ChangeNotifier {
     _sub = SocketService.instance.events.listen(_onEvent);
   }
 
+  void _sortAscending() {
+    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
   Future<void> load() async {
     isLoading = true;
     error = null;
     notifyListeners();
     try {
-      // Сервер отдаёт последние сообщения первыми — разворачиваем для
-      // отображения от старых к новым, как в обычном чате.
       final list = await _service.listMessages(chatId, limit: 50);
-      messages = list.reversed.toList();
+      messages = list;
+      _sortAscending();
       hasMore = list.length >= 50;
     } catch (e) {
       error = e.toString();
@@ -44,6 +47,9 @@ class ChatDetailProvider extends ChangeNotifier {
     isLoadingMore = true;
     notifyListeners();
     try {
+      // messages is kept sorted ascending, so the oldest loaded message is
+      // always at index 0 — use its timestamp as the "before" cursor to
+      // fetch the next older page.
       final oldest = messages.first;
       final more = await _service.listMessages(
         chatId,
@@ -53,7 +59,12 @@ class ChatDetailProvider extends ChangeNotifier {
       if (more.isEmpty) {
         hasMore = false;
       } else {
-        messages.insertAll(0, more.reversed);
+        for (final m in more) {
+          if (!messages.any((existing) => existing.id == m.id)) {
+            messages.add(m);
+          }
+        }
+        _sortAscending();
         hasMore = more.length >= 50;
       }
     } catch (_) {
