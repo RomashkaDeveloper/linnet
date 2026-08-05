@@ -11,6 +11,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+android/build/reports/problems/
 
 # IntelliJ related
 *.iml
