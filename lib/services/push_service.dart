@@ -1,5 +1,6 @@
 import 'dart:io';
-import 'dart:math';
+// import 'dart:math';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 
@@ -17,16 +18,16 @@ import 'api_client.dart';
 class PushService {
   static const _tokenKey = 'push_device_token';
 
-  Future<String> _getOrCreateLocalToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    var token = prefs.getString(_tokenKey);
-    if (token == null) {
-      final rnd = Random.secure();
-      token = List.generate(48, (_) => rnd.nextInt(16).toRadixString(16)).join();
-      await prefs.setString(_tokenKey, token);
-    }
-    return token;
-  }
+  // Future<String> _getOrCreateLocalToken() async {
+  //   final prefs = await SharedPreferences.getInstance();
+  //   var token = prefs.getString(_tokenKey);
+  //   if (token == null) {
+  //     final rnd = Random.secure();
+  //     token = List.generate(48, (_) => rnd.nextInt(16).toRadixString(16)).join();
+  //     await prefs.setString(_tokenKey, token);
+  //   }
+  //   return token;
+  // }
 
   String get _platform {
     if (Platform.isIOS) return 'ios';
@@ -36,7 +37,8 @@ class PushService {
 
   Future<void> register() async {
     try {
-      final token = await _getOrCreateLocalToken();
+      // final token = await _getOrCreateLocalToken();
+      final token = await FirebaseMessaging.instance.getToken();
       await ApiClient.instance.post('/push/register', body: {
         'token': token,
         'platform': _platform,

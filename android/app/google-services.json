@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "53456098260",
+    "project_id": "linnet-b7f89",
+    "storage_bucket": "linnet-b7f89.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:53456098260:android:fac8923d6a1f008bc47c41",
+        "android_client_info": {
+          "package_name": "com.example.linnet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDRWyDMpB8Cp3wymjMw-kHJ2xDL43qGBS8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
