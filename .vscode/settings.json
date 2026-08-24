@@ -1,0 +1,5 @@
+{
+    "dbHelper.mongo.connectionString": "",
+    "dbHelper.postgres.connectionString": "",
+    "dbHelper.redis.connectionString": ""
+}

@@ -194,7 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: chat.id)));
           }
         },
-        child: const Icon(Icons.edit_outlined),
+        child: const Icon(Icons.add),
       ),
     );
   }
