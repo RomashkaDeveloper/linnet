@@ -88,7 +88,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _onProviderUpdated() {
     if (!mounted) return;
-    _scrollToBottom();
+
+    if (_provider.hasNewMessage) {
+      _provider.clearNewMessageFlag();
+      _scrollToBottom();
+    }
   }
 
   // 5. Обработка включения/разблокировки экрана (resumed state)
@@ -171,6 +175,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка отправки: $e')));
     }
+    // await _provider.sendText(text, replyToId: replyId);
+    // _provider.stopTyping();
+    // _scrollToBottom();
   }
 
   Future<void> _initiateCall(CallType type) async {

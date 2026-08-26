@@ -15,6 +15,7 @@ class ChatDetailProvider extends ChangeNotifier {
   List<MessageOut> messages = [];
   bool isLoading = false;
   bool isLoadingMore = false;
+  bool hasNewMessage = false;
   bool hasMore = true;
   String? error;
   final Set<String> typingUserIds = {};
@@ -163,6 +164,12 @@ class ChatDetailProvider extends ChangeNotifier {
 
   void notifyRead(String messageId) => SocketService.instance.sendRead(chatId, messageId);
 
+  void clearNewMessageFlag() => hasNewMessage = false;
+
+  // void stopTyping() {
+  //   SocketService.instance.sendStopTyping(chatId);
+  // }
+
   void _onEvent(Map<String, dynamic> event) {
     // presence — это событие про пользователя в целом, а не про конкретный
     // чат, поэтому оно не содержит chat_id и должно обрабатываться до
@@ -216,8 +223,10 @@ class ChatDetailProvider extends ChangeNotifier {
     try {
       final raw = event['message'] ?? event;
       final msg = MessageOut.fromJson(raw as Map<String, dynamic>);
+
       if (!messages.any((m) => m.id == msg.id)) {
         messages.add(msg);
+        hasNewMessage = true;
         notifyListeners();
       }
     } catch (_) {}
