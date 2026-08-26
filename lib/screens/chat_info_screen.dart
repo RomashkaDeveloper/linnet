@@ -142,7 +142,7 @@ class _ChatInfoScreenState extends State<ChatInfoScreen> {
               : ListView(
                   children: [
                     const SizedBox(height: 16),
-                    Center(child: AvatarWidget(name: chat.name ?? '?', imageUrl: chat.avatarUrl, size: 96)),
+                    Center(child: AvatarWidget(name: chat.name ?? '?', imageUrl: chat.avatarUrl, size: 96, enableViewer: true)),
                     const SizedBox(height: 12),
                     Text(
                       chat.name ?? 'Группа',

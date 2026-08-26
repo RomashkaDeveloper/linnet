@@ -26,6 +26,15 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+
+	<!-- Права доступа для камеры, микрофона и медиагалереи -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Микрофон нужен для звонков</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Камера нужна для видеозвонков и фото</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Доступ к галерее нужен для отправки фото и видео</string>
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

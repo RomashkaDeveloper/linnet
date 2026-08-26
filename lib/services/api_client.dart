@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -55,6 +56,7 @@ class ApiClient {
         return null;
       }
     }
+    // print('ОШИБКА БЭКЕНДА (${resp.statusCode}): ${utf8.decode(resp.bodyBytes)}');
     String message = 'Ошибка сервера (${resp.statusCode})';
     try {
       final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
@@ -135,5 +137,80 @@ class ApiClient {
     final streamed = await request.send();
     final resp = await http.Response.fromStream(streamed);
     return _handle(resp);
+  }
+
+  /// Same as [multipart], but reports upload progress via [onProgress]
+  /// (bytesSent, totalBytes) as the request body is streamed out. Used to
+  /// drive the progress bubble shown while a media message is uploading.
+  Future<dynamic> multipartWithProgress(
+    String path, {
+    required String fieldName,
+    required String filePath,
+    String method = 'POST',
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final uri = _uri(path);
+    final inner = http.MultipartRequest(method, uri);
+    inner.headers.addAll(_headers(json: false));
+    final mimeType = lookupMimeType(filePath) ?? 'application/octet-stream';
+    final mediaType = MediaType.parse(mimeType);
+
+    // Достаем оригинальное имя файла и убираем из него опасные символы/путь
+    final rawFileName = filePath.split(RegExp(r'[\\/]+')).last;
+
+    inner.files.add(await http.MultipartFile.fromPath(
+      fieldName,
+      filePath,
+      filename: rawFileName, // Явно задаем имя файла
+      contentType: mediaType,
+    ));
+
+    final tracked = _ProgressTrackedRequest(inner, onProgress);
+    final client = http.Client();
+    try {
+      final streamed = await client.send(tracked);
+      final resp = await http.Response.fromStream(streamed);
+      return _handle(resp);
+    } finally {
+      client.close();
+    }
+  }
+}
+
+/// Wraps a [http.MultipartRequest] so the byte stream produced by
+/// `finalize()` reports how many bytes have been read so far — reading
+/// from this stream is exactly what `http.Client.send()` does while
+/// pushing the request body over the socket, so counting bytes read is a
+/// faithful proxy for upload progress.
+class _ProgressTrackedRequest extends http.BaseRequest {
+  final http.MultipartRequest _inner;
+  final void Function(int sent, int total)? _onProgress;
+
+  _ProgressTrackedRequest(this._inner, this._onProgress) : super(_inner.method, _inner.url) {
+    headers.addAll(_inner.headers);
+    persistentConnection = _inner.persistentConnection;
+    followRedirects = _inner.followRedirects;
+    maxRedirects = _inner.maxRedirects;
+  }
+
+  @override
+  int get contentLength => _inner.contentLength;
+
+  @override
+  http.ByteStream finalize() {
+    super.finalize();
+    final total = _inner.contentLength;
+    final source = _inner.finalize();
+    var sent = 0;
+    final transformed = source.transform(
+      StreamTransformer<List<int>, List<int>>.fromHandlers(
+        handleData: (data, sink) {
+          sent += data.length;
+          _onProgress?.call(sent, total);
+          sink.add(data);
+        },
+      ),
+    );
+    return http.ByteStream(transformed);
   }
 }

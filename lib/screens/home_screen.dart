@@ -165,6 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
             else
               Expanded(
                 child: ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 96),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final chat = filtered[index];
@@ -184,17 +185,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final chat = await Navigator.of(context).push<ChatOut>(
-            MaterialPageRoute(builder: (_) => const NewChatScreen()),
-          );
-          if (chat != null && mounted) {
-            context.read<ChatListProvider>().upsertChat(chat);
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: chat.id)));
-          }
-        },
-        child: const Icon(Icons.add),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 76),
+        child: FloatingActionButton(
+          onPressed: () async {
+            final chat = await Navigator.of(context).push<ChatOut>(
+              MaterialPageRoute(builder: (_) => const NewChatScreen()),
+            );
+            if (chat != null && mounted) {
+              context.read<ChatListProvider>().upsertChat(chat);
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: chat.id)));
+            }
+          },
+          child: const Icon(Icons.add),
+        ),
       ),
     );
   }

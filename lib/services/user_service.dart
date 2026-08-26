@@ -9,8 +9,8 @@ class UserService {
 
   Future<UserPrivate> updateMe({String? fullName, String? bio}) async {
     final data = await ApiClient.instance.patch('/users/me', body: {
-      'full_name': ?fullName,
-      'bio': ?bio,
+      if (fullName != null) 'full_name': fullName,
+      if (bio != null) 'bio': bio,
     });
     return UserPrivate.fromJson(data as Map<String, dynamic>);
   }

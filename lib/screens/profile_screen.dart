@@ -4,7 +4,6 @@ import 'package:image_picker/image_picker.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/avatar_widget.dart';
 import 'login_screen.dart';
-import 'server_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -63,23 +62,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Профиль'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () =>
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ServerSettingsScreen())),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Профиль')),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
         children: [
           Center(
             child: Stack(
               children: [
-                AvatarWidget(name: user?.displayName ?? '?', imageUrl: user?.avatarUrl, size: 100),
+                AvatarWidget(name: user?.displayName ?? '?', imageUrl: user?.avatarUrl, size: 100, enableViewer: true),
                 Positioned(
                   right: 0,
                   bottom: 0,

@@ -124,3 +124,4 @@ curl -X POST http://localhost:8000/chats/<CHAT_ID>/messages -H "Authorization: B
 curl -X POST http://localhost:8000/chats/<CHAT_ID>/messages/media -H "Authorization: Bearer <TOKEN>" \
   -F "file=@photo.jpg"
 ```
+

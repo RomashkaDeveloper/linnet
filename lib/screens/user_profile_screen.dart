@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/user.dart';
+import '../models/call.dart';
+import '../providers/call_provider.dart';
 import '../services/user_service.dart';
 import '../services/chat_service.dart';
 import '../widgets/avatar_widget.dart';
 import '../utils/formatters.dart';
+import 'call_screen.dart';
 import 'chat_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
@@ -44,6 +48,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
+  Future<void> _startCall(CallType type) async {
+    final user = _user;
+    if (user == null) return;
+    try {
+      final chat = await ChatService().createPrivate(user.id);
+      if (!mounted) return;
+      await context.read<CallProvider>().startCall(chat.id, type, user);
+      if (mounted) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CallScreen(), fullscreenDialog: true));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Не удалось начать звонок: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -61,6 +82,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         imageUrl: _user!.avatarUrl,
                         size: 100,
                         showOnlineDot: _user!.isOnline,
+                        enableViewer: true,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -84,6 +106,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       Text(_user!.bio!, textAlign: TextAlign.center),
                     ],
                     const SizedBox(height: 28),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _startCall(CallType.audio),
+                          icon: const Icon(Icons.call_outlined),
+                          label: const Text('Аудио'),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => _startCall(CallType.video),
+                          icon: const Icon(Icons.videocam_outlined),
+                          label: const Text('Видео'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed: () async {
                         try {

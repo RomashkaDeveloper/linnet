@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/message.dart';
+import '../models/pending_upload.dart';
 import '../models/user.dart';
 import '../services/message_service.dart';
 import '../services/socket_service.dart';
@@ -17,6 +18,11 @@ class ChatDetailProvider extends ChangeNotifier {
   bool hasMore = true;
   String? error;
   final Set<String> typingUserIds = {};
+
+  /// Media messages currently uploading — shown as progress bubbles at the
+  /// bottom of the chat until the upload finishes (success removes them,
+  /// failure keeps them with an error + retry/dismiss option).
+  final List<PendingUpload> pendingUploads = [];
 
   ChatDetailProvider(this.chatId) {
     _sub = SocketService.instance.events.listen(_onEvent);
@@ -79,6 +85,50 @@ class ChatDetailProvider extends ChangeNotifier {
     final msg = await _service.sendText(chatId, content, replyToId: replyToId);
     if (!messages.any((m) => m.id == msg.id)) {
       messages.add(msg);
+      notifyListeners();
+    }
+  }
+
+  // Future<void> sendMedia(String path) async {
+  //   final pending = PendingUpload(
+  //     localId: '${DateTime.now().microsecondsSinceEpoch}',
+  //     path: path,
+  //     type: guessMessageTypeFromPath(path),
+  //   );
+  //   pendingUploads.add(pending);
+  //   notifyListeners();
+  //   await _upload(pending);
+  // }
+
+  Future<void> retryUpload(PendingUpload pending) async {
+    pending.error = null;
+    pending.progress = 0;
+    notifyListeners();
+    await _upload(pending);
+  }
+
+  void dismissUpload(PendingUpload pending) {
+    pendingUploads.remove(pending);
+    notifyListeners();
+  }
+
+  Future<void> _upload(PendingUpload pending) async {
+    try {
+      final msg = await _service.sendMediaWithProgress(
+        chatId,
+        pending.path,
+        onProgress: (sent, total) {
+          pending.progress = total > 0 ? sent / total : 0;
+          notifyListeners();
+        },
+      );
+      pendingUploads.remove(pending);
+      if (!messages.any((m) => m.id == msg.id)) {
+        messages.add(msg);
+      }
+      notifyListeners();
+    } catch (e) {
+      pending.error = e.toString();
       notifyListeners();
     }
   }

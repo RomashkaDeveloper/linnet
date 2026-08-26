@@ -4,6 +4,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/message.dart';
 import '../services/api_config.dart';
 import '../utils/formatters.dart';
+import '../screens/photo_viewer_screen.dart';
+import '../screens/video_player_screen.dart';
+import 'audio_message_player.dart';
 
 class MessageBubble extends StatelessWidget {
   final MessageOut message;
@@ -73,10 +76,10 @@ class MessageBubble extends StatelessWidget {
                       padding: const EdgeInsets.only(right: 4),
                       child: Text(
                         'изменено',
-                        style: TextStyle(fontSize: 10.5, color: textColor.withValues(alpha: 0.65), fontStyle: FontStyle.italic),
+                        style: TextStyle(fontSize: 10.5, color: textColor.withOpacity(0.65), fontStyle: FontStyle.italic),
                       ),
                     ),
-                  Text(formatClock(message.createdAt), style: TextStyle(fontSize: 10.5, color: textColor.withValues(alpha: 0.65))),
+                  Text(formatClock(message.createdAt), style: TextStyle(fontSize: 10.5, color: textColor.withOpacity(0.65))),
                 ],
               ),
             ],
@@ -91,15 +94,15 @@ class MessageBubble extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: textColor.withValues(alpha: 0.1),
+        color: textColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: textColor.withValues(alpha: 0.5), width: 3)),
+        border: Border(left: BorderSide(color: textColor.withOpacity(0.5), width: 3)),
       ),
       child: Text(
         replyMessage!.isDeleted ? 'Сообщение удалено' : (replyMessage!.content ?? 'Медиа'),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 12.5, color: textColor.withValues(alpha: 0.9)),
+        style: TextStyle(fontSize: 12.5, color: textColor.withOpacity(0.9)),
       ),
     );
   }
@@ -109,9 +112,9 @@ class MessageBubble extends StatelessWidget {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.block, size: 15, color: textColor.withValues(alpha: 0.6)),
+          Icon(Icons.block, size: 15, color: textColor.withOpacity(0.6)),
           const SizedBox(width: 6),
-          Text('Сообщение удалено', style: TextStyle(color: textColor.withValues(alpha: 0.6), fontStyle: FontStyle.italic)),
+          Text('Сообщение удалено', style: TextStyle(color: textColor.withOpacity(0.6), fontStyle: FontStyle.italic)),
         ],
       );
     }
@@ -119,17 +122,17 @@ class MessageBubble extends StatelessWidget {
       case MessageType.text:
         return Text(message.content ?? '', style: TextStyle(color: textColor, fontSize: 15.5));
       case MessageType.photo:
-        return _photoContent();
+        return _photoContent(context);
       case MessageType.video:
-        return _mediaFileCard(textColor, Icons.videocam_outlined, 'Видео');
+        return _videoContent(context, textColor);
       case MessageType.audio:
-        return _mediaFileCard(textColor, Icons.mic_outlined, 'Аудио');
+        return _audioContent(textColor);
       case MessageType.file:
-        return _mediaFileCard(textColor, Icons.insert_drive_file_outlined, 'Файл');
+        return _fileCard(textColor);
     }
   }
 
-  Widget _photoContent() {
+  Widget _photoContent(BuildContext context) {
     final url = _fullMediaUrl;
     if (url == null) {
       return const SizedBox(width: 220, height: 120, child: Icon(Icons.image_outlined));
@@ -137,27 +140,81 @@ class MessageBubble extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: GestureDetector(
-        onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-        child: CachedNetworkImage(
-          imageUrl: url,
-          fit: BoxFit.cover,
-          width: 220,
-          placeholder: (_, _) => const SizedBox(
+        onTap: () => PhotoViewerScreen.open(context, url, heroTag: 'msg-${message.id}'),
+        child: Hero(
+          tag: 'msg-${message.id}',
+          child: CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
             width: 220,
-            height: 160,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          ),
-          errorWidget: (_, _, _) => const SizedBox(
-            width: 220,
-            height: 120,
-            child: Icon(Icons.broken_image_outlined),
+            placeholder: (_, __) => const SizedBox(
+              width: 220,
+              height: 160,
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+            errorWidget: (_, __, ___) => const SizedBox(
+              width: 220,
+              height: 120,
+              child: Icon(Icons.broken_image_outlined),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _mediaFileCard(Color textColor, IconData icon, String label) {
+  Widget _videoContent(BuildContext context, Color textColor) {
+    final url = _fullMediaUrl;
+    return InkWell(
+      onTap: url != null
+          ? () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => VideoPlayerScreen(videoUrl: url, title: message.mediaFilename),
+                fullscreenDialog: true,
+              ))
+          : null,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 220,
+        height: 140,
+        decoration: BoxDecoration(color: textColor.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(Icons.play_circle_fill, size: 48, color: textColor.withOpacity(0.85)),
+            if (message.mediaFilename != null)
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 8,
+                child: Text(
+                  message.mediaFilename!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: textColor, fontSize: 11.5),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _audioContent(Color textColor) {
+    final url = _fullMediaUrl;
+    if (url == null) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.mic_outlined, color: textColor),
+          const SizedBox(width: 8),
+          Text('Аудио недоступно', style: TextStyle(color: textColor)),
+        ],
+      );
+    }
+    return AudioMessagePlayer(audioUrl: url, foreground: textColor);
+  }
+
+  Widget _fileCard(Color textColor) {
     final url = _fullMediaUrl;
     return InkWell(
       onTap: url != null ? () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication) : null,
@@ -165,11 +222,11 @@ class MessageBubble extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(10),
         constraints: const BoxConstraints(minWidth: 180),
-        decoration: BoxDecoration(color: textColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(color: textColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: textColor),
+            Icon(Icons.insert_drive_file_outlined, color: textColor),
             const SizedBox(width: 10),
             Flexible(
               child: Column(
@@ -177,7 +234,7 @@ class MessageBubble extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    message.mediaFilename ?? label,
+                    message.mediaFilename ?? 'Файл',
                     style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -185,7 +242,7 @@ class MessageBubble extends StatelessWidget {
                   if (message.mediaSize != null)
                     Text(
                       formatFileSize(message.mediaSize!),
-                      style: TextStyle(color: textColor.withValues(alpha: 0.75), fontSize: 11.5),
+                      style: TextStyle(color: textColor.withOpacity(0.75), fontSize: 11.5),
                     ),
                 ],
               ),

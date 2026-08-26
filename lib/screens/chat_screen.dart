@@ -1,18 +1,23 @@
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
 import '../providers/auth_provider.dart';
+import '../providers/call_provider.dart';
 import '../providers/chat_detail_provider.dart';
 import '../providers/chat_list_provider.dart';
+import '../models/call.dart';
 import '../models/message.dart';
 import '../models/chat.dart';
 import '../services/chat_service.dart';
 import '../widgets/avatar_widget.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/pending_upload_bubble.dart';
 import '../utils/formatters.dart';
+import 'call_screen.dart';
 import 'chat_info_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -105,6 +110,24 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка отправки: $e')));
+    }
+  }
+
+  Future<void> _initiateCall(CallType type) async {
+    final chat = _chat;
+    final auth = context.read<AuthProvider>();
+    final currentUserId = auth.currentUser?.id ?? '';
+    final otherUser = chat?.otherUser(currentUserId);
+    if (chat == null || otherUser == null) return;
+    try {
+      await context.read<CallProvider>().startCall(chat.id, type, otherUser);
+      if (mounted) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CallScreen(), fullscreenDialog: true));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Не удалось начать звонок: $e')));
+      }
     }
   }
 
@@ -251,6 +274,20 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Scaffold(
         appBar: AppBar(
           titleSpacing: 0,
+          actions: [
+            if (chat?.type == ChatType.private && otherUser != null) ...[
+              IconButton(
+                icon: const Icon(Icons.call_outlined),
+                tooltip: 'Аудиозвонок',
+                onPressed: () => _initiateCall(CallType.audio),
+              ),
+              IconButton(
+                icon: const Icon(Icons.videocam_outlined),
+                tooltip: 'Видеозвонок',
+                onPressed: () => _initiateCall(CallType.video),
+              ),
+            ],
+          ],
           title: InkWell(
             onTap: () {
               if (chat == null) return;
@@ -269,6 +306,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     imageUrl: chat?.type == ChatType.group ? chat?.avatarUrl : otherUser?.avatarUrl,
                     size: 38,
                     showOnlineDot: otherUser != null && p.isUserOnline(otherUser),
+                    enableViewer: true,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -314,15 +352,17 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (p.error != null && p.messages.isEmpty) {
                     return Center(child: Text('Ошибка загрузки: ${p.error}'));
                   }
-                  if (p.messages.isEmpty) {
+                  if (p.messages.isEmpty && p.pendingUploads.isEmpty) {
                     return const Center(
                       child: Text('Сообщений пока нет.\nНачните разговор!', textAlign: TextAlign.center),
                     );
                   }
+                  final loadingOffset = p.isLoadingMore ? 1 : 0;
+                  final totalCount = loadingOffset + p.messages.length + p.pendingUploads.length;
                   return ListView.builder(
                     controller: _scrollCtrl,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: p.messages.length + (p.isLoadingMore ? 1 : 0),
+                    itemCount: totalCount,
                     itemBuilder: (context, index) {
                       if (p.isLoadingMore && index == 0) {
                         return const Padding(
@@ -330,7 +370,15 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
                         );
                       }
-                      final i = p.isLoadingMore ? index - 1 : index;
+                      final i = index - loadingOffset;
+                      if (i >= p.messages.length) {
+                        final pending = p.pendingUploads[i - p.messages.length];
+                        return PendingUploadBubble(
+                          pending: pending,
+                          onRetry: () => _provider.retryUpload(pending),
+                          onDismiss: () => _provider.dismissUpload(pending),
+                        );
+                      }
                       final msg = p.messages[i];
                       final isMine = msg.senderId == currentUserId;
                       MessageOut? reply;
@@ -412,7 +460,22 @@ class _ChatScreenState extends State<ChatScreen> {
                     minLines: 1,
                     maxLines: 5,
                     textCapitalization: TextCapitalization.sentences,
-                    onChanged: (_) => _provider.notifyTyping(),
+                    onChanged: (value) {
+                      _provider.notifyTyping();
+                      // На десктопе (физическая клавиатура) Enter отправляет
+                      // сообщение, а Shift+Enter — перенос строки. На
+                      // мобильных Enter как обычно вставляет перенос строки,
+                      // а отправка — через кнопку.
+                      if (!_isMobile &&
+                          value.endsWith('\n') &&
+                          !HardwareKeyboard.instance.isShiftPressed) {
+                        _textCtrl.value = TextEditingValue(
+                          text: value.substring(0, value.length - 1),
+                          selection: TextSelection.collapsed(offset: value.length - 1),
+                        );
+                        _send();
+                      }
+                    },
                     decoration: const InputDecoration(
                       hintText: 'Сообщение',
                       border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(22))),

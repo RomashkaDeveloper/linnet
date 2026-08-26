@@ -1,18 +1,10 @@
 import 'package:shared_preferences/shared_preferences.dart';
-
-/// Holds the backend base URL. Configurable at runtime from the
-/// "Настройки сервера" screen and persisted across app launches.
-///
-/// Defaults to 10.0.2.2, which is how the Android emulator reaches
-/// "localhost" on the host machine. For a real device running against a
-/// local dev server, change this to the machine's LAN IP, e.g.
-/// http://192.168.1.50:8000.
 class ApiConfig {
   ApiConfig._();
   static final ApiConfig instance = ApiConfig._();
 
   static const _prefsKey = 'base_url';
-  static const defaultBaseUrl = 'http://192.168.1.21:8000';
+  static const defaultBaseUrl = 'http://62.109.2.230';
 
   String baseUrl = defaultBaseUrl;
 

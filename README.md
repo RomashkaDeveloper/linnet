@@ -1,96 +1,139 @@
 # Linnet — Flutter-клиент мессенджера
 
-Полная реализация клиента под все эндпоинты из `docs.md` / `api.json`:
-регистрация и вход, профиль и аватар, поиск пользователей, личные и групповые
-чаты, отправка текста/фото/видео/файлов, редактирование и удаление сообщений,
-статусы "в сети"/"печатает"/"прочитано" через WebSocket, push-регистрация.
-
-## Куда положить файлы
-
-1. Содержимое папки `lib/` целиком заменяет (или дополняет) папку `lib/` в
-   вашем Flutter-проекте.
-2. `AndroidManifest.xml` — замените им
-   `android/app/src/main/AndroidManifest.xml` (в него добавлены разрешения на
-   интернет, камеру, медиатеку и push, плюс `usesCleartextTraffic="true"`,
-   без которого Android блокирует обычный http:// к вашему серверу для
-   разработки).
-
 ## Зависимости (добавить в pubspec.yaml)
-
-В секцию `dependencies:` добавьте:
 
 ```yaml
 dependencies:
   flutter:
     sdk: flutter
+
+  # уже было
+  cupertino_icons: ^1.0.8
+  http: ^1.5.0
+  shared_preferences: ^2.0.0
+
+  # состояние / сеть
   provider: ^6.1.2
-  http: ^1.2.2
   http_parser: ^4.0.2
   mime: ^1.0.5
-  shared_preferences: ^2.3.2
   web_socket_channel: ^2.4.5
+
+  # медиа: выбор файлов, изображения, кэш
   image_picker: ^1.1.2
-  file_picker: ^8.1.2
+  file_selector: ^1.0.3
   cached_network_image: ^3.4.1
   url_launcher: ^6.3.1
+
+  # встроенные плееры
+  video_player: ^2.9.2
+  just_audio: ^0.9.42
+
+  # звонки (WebRTC)
+  flutter_webrtc: ^0.11.7
+
+  # системные разрешения
+  permission_handler: ^11.3.1
 ```
 
-Затем выполните:
-
+Затем:
 ```bash
+flutter clean
 flutter pub get
 ```
 
 ## Настройка адреса сервера
 
-По умолчанию приложение обращается к `http://10.0.2.2:8000` — это адрес,
-по которому Android-эмулятор видит `localhost` хост-машины, где обычно
-запущен ваш backend в разработке.
+https://localhost:8000 или http://62.109.2.230
 
-- Для **Android-эмулятора**: ничего менять не нужно, если сервер запущен
-  локально на порту 8000.
-- Для **реального устройства**: откройте профиль → значок шестерёнки
-  («Настройки сервера») и укажите LAN-адрес машины с сервером, например
-  `http://192.168.1.50:8000`.
-- Настройка сохраняется локально (SharedPreferences) и используется как для
-  REST-запросов, так и для WebSocket-соединения (`/ws?token=...`).
+### Разрешения для звонков
 
-## Что важно знать про Push-уведомления
+`AppPermissions.ensureMicrophone()` / `ensureCamera()` запрашиваются прямо
+перед звонком (в `startCall`/`acceptCall`), не заранее. Если в видео-звонке
+отказали в камере — звонок не срывается, а превращается в аудио-звонок.
 
-`docs.md` описывает push через Firebase Cloud Messaging — сервер сам решает,
-слать ли push, когда получатель офлайн. Полноценная интеграция FCM требует
-отдельного шага: создание проекта в Firebase Console, добавление
-`google-services.json` в `android/app/`, подключение плагина
-`firebase_messaging` и настройка Gradle. Это заведомо выходит за рамки
-файлов в `lib/`, поэтому в `push_service.dart` реализована рабочая, но
-временная схема: генерируется и сохраняется локальный токен устройства,
-который регистрируется/снимается через `/push/register` и
-`/push/unregister` — так эндпоинты полностью протестированы и работают,
-просто без реальной доставки через FCM. Когда подключите Firebase, замените
-в `push_service.dart` генерацию локального токена на
-`FirebaseMessaging.instance.getToken()` — остальной код менять не придётся.
+### iOS (если будете добавлять платформу)
 
-## Медиа: фото/видео/файлы
+В `ios/Runner/Info.plist` потребуется добавить:
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>Микрофон нужен для звонков</string>
+<key>NSCameraUsageDescription</key>
+<string>Камера нужна для видеозвонков и фото</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>Доступ к галерее нужен для отправки фото и видео</string>
+```
+Без этого iOS убьёт приложение при попытке запросить разрешение (это
+системное требование Apple, не связанное с кодом в `lib/`).
 
-Отправка фото и видео идёт через `image_picker` (камера или галерея), файлы —
-через `file_picker`. Входящие фото показываются прямо в чате; видео, аудио и
-файлы отображаются карточкой с именем и размером — по тапу открываются во
-внешнем приложении устройства через `url_launcher` (полноценный video/audio
-плеер внутри чата не подключался, чтобы не тащить лишние нативные
-зависимости — при необходимости легко добавить `video_player`/`just_audio`
-поверх уже готовой карточки в `widgets/message_bubble.dart`).
+## Push-уведомления
+
+Как и раньше: `docs.md` описывает push через Firebase Cloud Messaging, но
+полноценная интеграция требует Firebase-проекта и `google-services.json`
+вне `lib/`. `push_service.dart` использует рабочую заглушку — генерирует
+локальный токен устройства и регистрирует его через `/push/register`, так
+что сам эндпоинт полностью протестирован, просто без реальной доставки
+через FCM. Уведомления теперь также запрашиваются как системное разрешение
+(Android 13+) через `AppPermissions.ensureNotifications()` сразу после
+входа — фоново, не блокируя UI.
+
+## Медиа: фото/видео/аудио/файлы
+
+- **Фото** — открываются во встроенном полноэкранном просмотрщике с зумом
+  (`screens/photo_viewer_screen.dart`, `InteractiveViewer` + `Hero`-анимация
+  перехода). Тот же просмотрщик используется для аватарок (передайте
+  `enableViewer: true` в `AvatarWidget`, где это уместно — уже включено для
+  профиля, шапки чата и информации о группе).
+- **Видео** — открывается во встроенном плеере `video_player`
+  (`screens/video_player_screen.dart`) со шкалой перемотки и таймером.
+- **Аудио** — плеер встроен прямо в пузырь сообщения
+  (`widgets/audio_message_player.dart`, на базе `just_audio`): play/pause,
+  перемотка слайдером, текущее время/длительность.
+- **Файлы** — по-прежнему открываются во внешнем приложении через
+  `url_launcher` (для произвольных документов встроенный просмотр не
+  делался — не было такой задачи).
+- Отправка фото/видео с камеры/галереи — через `image_picker`, который
+  **не поддерживает Windows/macOS/Linux/web**, поэтому эти кнопки скрыты на
+  десктопе (`_isMobile` в `chat_screen.dart`). Универсальный выбор файла —
+  через `file_selector` (работает везде, включая Windows).
+- **Прогресс загрузки**: `ApiClient.multipartWithProgress` оборачивает
+  `http.MultipartRequest` в кастомный `BaseRequest`, который считает байты
+  по мере того, как HTTP-клиент читает их для отправки — честный прогресс,
+  без дополнительных пакетов вроде `dio`. Пока файл грузится, в чате
+  показывается прогресс-бабл (`widgets/pending_upload_bubble.dart`) с
+  процентом; при ошибке — кнопки «Повторить»/«Убрать».
+
+## Нижняя навигация
+
+`screens/main_shell_screen.dart` + `widgets/floating_nav_bar.dart` — плавающая
+пилюля поверх контента с 4 вкладками: Чаты, Звонки, Настройки, Профиль.
+Экран настроек сервера (`server_settings_screen.dart`) больше не используется
+напрямую — его заменила вкладка **Настройки** (`settings_screen.dart`),
+старый файл можно удалить, если не нужен для другого.
+
+## Отправка по Enter
+
+На десктопе (Windows/macOS/Linux) Enter в поле ввода отправляет сообщение,
+Shift+Enter — переносит строку. На мобильных платформах поведение не
+менялось (Enter — перенос строки, отправка — кнопкой), так как на телефоне
+нет физической клавиши Shift и это стандартный паттерн мессенджеров.
+Реализовано без хрупких трюков с `Shortcuts`/`Actions` — по факту вставки
+`\n` в `onChanged` строка обрезается и вызывается отправка, если Shift не
+зажат (`HardwareKeyboard.instance.isShiftPressed`).
 
 ## Структура
 
 ```
 lib/
-  models/       — User, Chat, Message, AuthToken (парсинг JSON 1-в-1 под api.json)
-  services/     — ApiClient (http-обёртка), AuthService, UserService,
-                  ChatService, MessageService, PushService, SocketService,
-                  ApiConfig (адрес сервера), TokenStorage (сохранение сессии)
-  providers/    — AuthProvider, ChatListProvider, ChatDetailProvider
-                  (state management на Provider, ChangeNotifier)
-  screens/      — все экраны приложения
-  widgets/      — переиспользуемые виджеты (аватар, пузырь сообщения, строка чата)
+  models/       — User, Chat, Message, AuthToken, Call, PendingUpload
+  services/     — ApiClient (http-обёртка + прогресс загрузки), AuthService,
+                  UserService, ChatService, MessageService, CallService,
+                  PushService, SocketService, PermissionService,
+                  ApiConfig, TokenStorage
+  providers/    — AuthProvider, ChatListProvider, ChatDetailProvider,
+                  CallProvider (WebRTC + сигналинг)
+  screens/      — все экраны приложения, включая MainShellScreen (нижняя
+                  навигация), звонки, встроенные плееры/просмотрщики
+  widgets/      — аватар, пузырь сообщения, строка чата, плавающий nav bar,
+                  аудиоплеер, прогресс-бабл загрузки
   utils/        — форматирование дат/размеров файлов
 ```

@@ -9,7 +9,7 @@ class MessageService {
   }) async {
     final data = await ApiClient.instance.get('/chats/$chatId/messages', query: {
       'limit': limit,
-      'before': ?before,
+      if (before != null) 'before': before,
     });
     return (data as List<dynamic>)
         .map((e) => MessageOut.fromJson(e as Map<String, dynamic>))
@@ -19,7 +19,7 @@ class MessageService {
   Future<MessageOut> sendText(String chatId, String content, {String? replyToId}) async {
     final data = await ApiClient.instance.post('/chats/$chatId/messages', body: {
       'content': content,
-      'reply_to_id': ?replyToId,
+      if (replyToId != null) 'reply_to_id': replyToId,
     });
     return MessageOut.fromJson(data as Map<String, dynamic>);
   }
@@ -29,6 +29,20 @@ class MessageService {
       '/chats/$chatId/messages/media',
       fieldName: 'file',
       filePath: filePath,
+    );
+    return MessageOut.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<MessageOut> sendMediaWithProgress(
+    String chatId,
+    String filePath, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final data = await ApiClient.instance.multipartWithProgress(
+      '/chats/$chatId/messages/media',
+      fieldName: 'file',
+      filePath: filePath,
+      onProgress: onProgress,
     );
     return MessageOut.fromJson(data as Map<String, dynamic>);
   }

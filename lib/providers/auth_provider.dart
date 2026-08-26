@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/token_storage.dart';
 import '../services/socket_service.dart';
 import '../services/push_service.dart';
+import '../services/permission_service.dart';
 import '../services/user_service.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
@@ -26,6 +27,7 @@ class AuthProvider extends ChangeNotifier {
       status = AuthStatus.authenticated;
       SocketService.instance.connect(token);
       unawaited(PushService().register());
+      unawaited(AppPermissions.ensureNotifications());
       unawaited(_refreshMe());
     } else {
       status = AuthStatus.unauthenticated;
@@ -93,6 +95,7 @@ class AuthProvider extends ChangeNotifier {
     await TokenStorage.instance.save(token, user);
     SocketService.instance.connect(token);
     unawaited(PushService().register());
+    unawaited(AppPermissions.ensureNotifications());
   }
 
   Future<void> logout() async {

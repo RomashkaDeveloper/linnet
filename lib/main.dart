@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:linnet/firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/call_provider.dart';
 import 'providers/chat_list_provider.dart';
 import 'services/api_config.dart';
 import 'screens/splash_screen.dart';
@@ -27,6 +28,7 @@ class LinnetApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ChatListProvider()),
+        ChangeNotifierProvider(create: (_) => CallProvider()),
       ],
       child: MaterialApp(
         title: 'Linnet',
