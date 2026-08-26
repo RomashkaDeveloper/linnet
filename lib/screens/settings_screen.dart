@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_config.dart';
 import '../services/permission_service.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,11 +12,15 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _urlCtrl;
+  String? _buildNumber;
+  String? _appVersion;
+  String? _appName;
 
   @override
   void initState() {
     super.initState();
     _urlCtrl = TextEditingController(text: ApiConfig.instance.baseUrl);
+    _getAppInfo();
   }
 
   @override
@@ -37,6 +42,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(granted ? '$label: доступ есть' : '$label: доступа нет — включите в настройках системы')),
     );
+  }
+
+  Future<void> _getAppInfo() async {
+    PackageInfo packageInfo = await PackageInfo.fromPlatform();
+
+    String appName = packageInfo.appName;
+    // String packageName = packageInfo.packageName;
+    String version = packageInfo.version;
+    String buildNumber = packageInfo.buildNumber;
+
+    if (!mounted) return;
+
+    setState(() {
+      _buildNumber = buildNumber;
+      _appVersion = version;
+      _appName = appName;
+    });
   }
 
   @override
@@ -101,11 +123,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 28),
           Text('О приложении', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          const ListTile(
+          ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.info_outline),
-            title: Text('Linnet'),
-            subtitle: Text('Мессенджер'),
+            title: Text(_appName ?? "Загружается"),
+            subtitle: Text('Версия: ${_appVersion ?? "Загружается"}+${_buildNumber ?? "Загружается"}'),
           ),
         ],
       ),

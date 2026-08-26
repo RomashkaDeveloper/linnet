@@ -1,4 +1,4 @@
-package com.example.linnet
+package com.romashka.linnet
 
 import io.flutter.embedding.android.FlutterActivity
 

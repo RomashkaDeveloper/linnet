@@ -13,8 +13,19 @@ class ChatListProvider extends ChangeNotifier {
   bool isLoading = false;
   String? error;
 
+  /// ID чата, который сейчас открыт у пользователя на экране
+  String? activeChatId;
+
   ChatListProvider() {
     _sub = SocketService.instance.events.listen(_onEvent);
+  }
+
+  /// Устанавливаем текущий активный (открытый) чат
+  void setActiveChat(String? chatId) {
+    activeChatId = chatId;
+    if (chatId != null) {
+      markRead(chatId);
+    }
   }
 
   Future<void> load() async {
@@ -23,6 +34,13 @@ class ChatListProvider extends ChangeNotifier {
     notifyListeners();
     try {
       chats = await _service.listChats();
+      // Если какой-то чат прямо сейчас открыт, обнуляем его непрочитанные
+      if (activeChatId != null) {
+        final idx = chats.indexWhere((c) => c.id == activeChatId);
+        if (idx != -1) {
+          chats[idx] = chats[idx].copyWith(unreadCount: 0);
+        }
+      }
       _sortChats();
     } catch (e) {
       error = e.toString();
@@ -70,8 +88,6 @@ class ChatListProvider extends ChangeNotifier {
       final oldMember = chat.members[memberIdx];
       final updatedUser = oldMember.user.copyWith(
         isOnline: isOnline,
-        // Пока не в сети — фиксируем момент, когда получили это событие,
-        // как приблизительное время последнего захода.
         lastSeen: isOnline ? oldMember.user.lastSeen : DateTime.now(),
       );
       final updatedMembers = List<ChatMemberOut>.from(chat.members);
@@ -94,9 +110,15 @@ class ChatListProvider extends ChangeNotifier {
       final raw = event['message'] ?? event;
       final msg = MessageOut.fromJson(raw as Map<String, dynamic>);
       if (idx != -1) {
+        // Если сообщение пришло в чат, который СЕЙЧАС ОТКРЫТ, не увеличиваем unreadCount
+        final isCurrentActiveChat = (chatId == activeChatId);
+        final newUnreadCount = isCurrentActiveChat 
+            ? 0 
+            : chats[idx].unreadCount + 1;
+
         chats[idx] = chats[idx].copyWith(
           lastMessage: msg,
-          unreadCount: chats[idx].unreadCount + 1,
+          unreadCount: newUnreadCount,
         );
         _sortChats();
         notifyListeners();
@@ -112,10 +134,16 @@ class ChatListProvider extends ChangeNotifier {
     try {
       final chat = await _service.getChat(chatId);
       final idx = chats.indexWhere((c) => c.id == chatId);
+      
+      // Не сбрасываем статус прочитанности обратно, если чат сейчас открыт
+      final finalChat = (chatId == activeChatId)
+          ? chat.copyWith(unreadCount: 0)
+          : chat;
+
       if (idx != -1) {
-        chats[idx] = chat;
+        chats[idx] = finalChat;
       } else {
-        chats.insert(0, chat);
+        chats.insert(0, finalChat);
       }
       _sortChats();
       notifyListeners();
@@ -130,10 +158,6 @@ class ChatListProvider extends ChangeNotifier {
     }
   }
 
-  /// Removes a chat from the user's list. The API only exposes
-  /// `/chats/{id}/leave` (no dedicated "delete" endpoint), so deleting a
-  /// chat here means leaving it — for a private chat that just removes it
-  /// from your own list; for a group it also removes you as a member.
   Future<void> deleteChat(String chatId) async {
     final idx = chats.indexWhere((c) => c.id == chatId);
     if (idx == -1) return;
@@ -143,7 +167,6 @@ class ChatListProvider extends ChangeNotifier {
     try {
       await _service.leaveChat(chatId);
     } catch (e) {
-      // Не удалось на сервере — возвращаем чат обратно в список.
       chats.insert(idx, removed);
       _sortChats();
       notifyListeners();

@@ -173,9 +173,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       chat: chat,
                       currentUserId: currentUserId,
                       onTap: () async {
-                        await Navigator.of(context)
-                            .push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: chat.id)));
-                        if (mounted) context.read<ChatListProvider>().refreshChat(chat.id);
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => ChatScreen(chatId: chat.id)),
+                        );
+                        if (mounted) {
+                          context.read<ChatListProvider>().markRead(chat.id);
+                        }
                       },
                       onLongPress: () => _showChatOptions(chat, currentUserId),
                     );

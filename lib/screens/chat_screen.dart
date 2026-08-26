@@ -29,10 +29,12 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   late final ChatDetailProvider _provider;
+  ChatListProvider? _chatListProvider;
   final _textCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
+  final _focusNode = FocusNode();
   ChatOut? _chat;
   MessageOut? _replyTo;
   MessageOut? _editing;
@@ -40,16 +42,64 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ChatListProvider>().setActiveChat(widget.chatId);
+      }
+    });
+    WidgetsBinding.instance.addObserver(this);
+
     _provider = ChatDetailProvider(widget.chatId);
     _provider.load().then((_) {
       if (mounted) _jumpToBottom();
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatListProvider?.setActiveChat(widget.chatId);
+    });
+
+    // 1. Прокрутка вниз при получении новых сообщений от собеседника
+    _provider.addListener(_onProviderUpdated);
+
     _loadChat();
+
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.hasClients && _scrollCtrl.position.pixels <= 80) {
         _provider.loadMore();
       }
     });
+
+    // 2. Прокрутка вниз при открытии клавиатуры на iOS и Android
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) _scrollToBottom();
+        });
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Переменную с контекстом запоминаем до того, как виджет будет уничтожен
+    _chatListProvider = context.read<ChatListProvider>();
+  }
+
+  void _onProviderUpdated() {
+    if (!mounted) return;
+    _scrollToBottom();
+  }
+
+  // 5. Обработка включения/разблокировки экрана (resumed state)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _provider.load().then((_) {
+        if (mounted) _scrollToBottom();
+      });
+      _loadChat();
+    }
   }
 
   /// Instantly positions the list at the newest message — used when the
@@ -73,9 +123,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _provider.removeListener(_onProviderUpdated);
+    _chatListProvider?.setActiveChat(null);
     _provider.dispose();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -89,6 +143,12 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     });
+  }
+
+  // 3. Убираем фокус с клавиатуры перед просмотром медиафайлов
+  void _unfocus() {
+    _focusNode.unfocus();
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _send() async {
@@ -114,6 +174,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _initiateCall(CallType type) async {
+    _unfocus();
     final chat = _chat;
     final auth = context.read<AuthProvider>();
     final currentUserId = auth.currentUser?.id ?? '';
@@ -131,10 +192,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// image_picker only has native camera/gallery pickers on Android/iOS —
-  /// on Windows/macOS/Linux/web those source options simply aren't
-  /// available, so we hide them there and only offer the generic file
-  /// picker (which also works fine for picking images on desktop).
   bool get _isMobile => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   Future<void> _sendFromPath(String? path) async {
@@ -150,28 +207,31 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickFromCamera() async {
+    _unfocus();
     final file = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85);
     await _sendFromPath(file?.path);
   }
 
   Future<void> _pickImageFromGallery() async {
+    _unfocus();
     final file = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
     await _sendFromPath(file?.path);
   }
 
   Future<void> _pickVideoFromGallery() async {
+    _unfocus();
     final file = await ImagePicker().pickVideo(source: ImageSource.gallery);
     await _sendFromPath(file?.path);
   }
 
-  /// Generic "any file" picker — works on every platform including Windows,
-  /// unlike image_picker's camera/gallery sources.
   Future<void> _pickAnyFile() async {
+    _unfocus();
     final file = await file_selector.openFile();
     await _sendFromPath(file?.path);
   }
 
   void _showAttachmentSheet() {
+    _unfocus();
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -220,6 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _onMessageLongPress(MessageOut msg, bool isMine) {
+    _unfocus();
     if (msg.isDeleted) return;
     showModalBottomSheet(
       context: context,
@@ -290,6 +351,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
           title: InkWell(
             onTap: () {
+              _unfocus();
               if (chat == null) return;
               if (chat.type == ChatType.group) {
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatInfoScreen(chatId: chat.id)));
@@ -457,15 +519,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 Expanded(
                   child: TextField(
                     controller: _textCtrl,
+                    focusNode: _focusNode,
                     minLines: 1,
                     maxLines: 5,
+                    textInputAction: TextInputAction.send, // 4. Замена переноса строки на кнопку отправки
+                    onSubmitted: (_) => _send(), // 4. Отправка по кнопке с клавиатуры
                     textCapitalization: TextCapitalization.sentences,
                     onChanged: (value) {
                       _provider.notifyTyping();
-                      // На десктопе (физическая клавиатура) Enter отправляет
-                      // сообщение, а Shift+Enter — перенос строки. На
-                      // мобильных Enter как обычно вставляет перенос строки,
-                      // а отправка — через кнопку.
                       if (!_isMobile &&
                           value.endsWith('\n') &&
                           !HardwareKeyboard.instance.isShiftPressed) {
