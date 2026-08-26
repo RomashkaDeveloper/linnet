@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '53456098260',
     projectId: 'linnet-b7f89',
     storageBucket: 'linnet-b7f89.firebasestorage.app',
-    iosBundleId: 'com.example.linnet',
+    iosBundleId: 'com.romashka.linnet',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -73,7 +73,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '53456098260',
     projectId: 'linnet-b7f89',
     storageBucket: 'linnet-b7f89.firebasestorage.app',
-    iosBundleId: 'com.example.linnet',
+    iosBundleId: 'com.romashka.linnet',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
