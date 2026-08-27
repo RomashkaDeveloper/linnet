@@ -90,16 +90,16 @@ class ChatDetailProvider extends ChangeNotifier {
     }
   }
 
-  // Future<void> sendMedia(String path) async {
-  //   final pending = PendingUpload(
-  //     localId: '${DateTime.now().microsecondsSinceEpoch}',
-  //     path: path,
-  //     type: guessMessageTypeFromPath(path),
-  //   );
-  //   pendingUploads.add(pending);
-  //   notifyListeners();
-  //   await _upload(pending);
-  // }
+  Future<void> sendMedia(String path) async {
+    final pending = PendingUpload(
+      localId: '${DateTime.now().microsecondsSinceEpoch}',
+      path: path,
+      type: guessMessageTypeFromPath(path),
+    );
+    pendingUploads.add(pending);
+    notifyListeners();
+    await _upload(pending);
+  }
 
   Future<void> retryUpload(PendingUpload pending) async {
     pending.error = null;
@@ -134,13 +134,13 @@ class ChatDetailProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> sendMedia(String path) async {
-    final msg = await _service.sendMedia(chatId, path);
-    if (!messages.any((m) => m.id == msg.id)) {
-      messages.add(msg);
-      notifyListeners();
-    }
-  }
+  // Future<void> sendMedia(String path) async {
+  //   final msg = await _service.sendMedia(chatId, path);
+  //   if (!messages.any((m) => m.id == msg.id)) {
+  //     messages.add(msg);
+  //     notifyListeners();
+  //   }
+  // }
 
   Future<void> editMessage(String messageId, String content) async {
     final updated = await _service.editMessage(chatId, messageId, content);

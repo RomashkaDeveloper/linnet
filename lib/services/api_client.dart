@@ -56,7 +56,6 @@ class ApiClient {
         return null;
       }
     }
-    // print('ОШИБКА БЭКЕНДА (${resp.statusCode}): ${utf8.decode(resp.bodyBytes)}');
     String message = 'Ошибка сервера (${resp.statusCode})';
     try {
       final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
@@ -152,20 +151,14 @@ class ApiClient {
     final uri = _uri(path);
     final inner = http.MultipartRequest(method, uri);
     inner.headers.addAll(_headers(json: false));
-    final mimeType = lookupMimeType(filePath) ?? 'application/octet-stream';
-    final mediaType = MediaType.parse(mimeType);
-
-    // Достаем оригинальное имя файла и убираем из него опасные символы/путь
-    final rawFileName = filePath.split(RegExp(r'[\\/]+')).last;
-
+    final mimeType = lookupMimeType(filePath);
     inner.files.add(await http.MultipartFile.fromPath(
       fieldName,
       filePath,
-      filename: rawFileName, // Явно задаем имя файла
-      contentType: mediaType,
+      contentType: mimeType != null ? MediaType.parse(mimeType) : null,
     ));
 
-    final tracked = _ProgressTrackedRequest(inner, onProgress);
+    final tracked = _ProgressTrackedRequest.from(inner, onProgress);
     final client = http.Client();
     try {
       final streamed = await client.send(tracked);
@@ -177,36 +170,69 @@ class ApiClient {
   }
 }
 
-/// Wraps a [http.MultipartRequest] so the byte stream produced by
-/// `finalize()` reports how many bytes have been read so far — reading
-/// from this stream is exactly what `http.Client.send()` does while
-/// pushing the request body over the socket, so counting bytes read is a
-/// faithful proxy for upload progress.
+/// Wraps an already-finalized [http.MultipartRequest] byte stream so it
+/// reports how many bytes have been read so far — reading from this stream
+/// is exactly what `http.Client.send()` does while pushing the request body
+/// over the socket, so counting bytes read is a faithful proxy for upload
+/// progress.
+///
+/// IMPORTANT: `MultipartRequest.finalize()` is what computes the multipart
+/// boundary and sets the real `Content-Type: multipart/form-data;
+/// boundary=...` header — that header does not exist before finalize() runs.
+/// So headers must be copied from [inner] AFTER calling [inner.finalize()],
+/// not before, or the server receives a request it can't parse as
+/// multipart at all (and never sees the file field).
 class _ProgressTrackedRequest extends http.BaseRequest {
-  final http.MultipartRequest _inner;
+  final http.ByteStream _bodyStream;
+  final int _contentLength;
   final void Function(int sent, int total)? _onProgress;
 
-  _ProgressTrackedRequest(this._inner, this._onProgress) : super(_inner.method, _inner.url) {
-    headers.addAll(_inner.headers);
-    persistentConnection = _inner.persistentConnection;
-    followRedirects = _inner.followRedirects;
-    maxRedirects = _inner.maxRedirects;
+  _ProgressTrackedRequest._(
+    String method,
+    Uri url,
+    Map<String, String> headers,
+    this._bodyStream,
+    this._contentLength,
+    this._onProgress,
+  ) : super(method, url) {
+    this.headers.addAll(headers);
+  }
+
+  factory _ProgressTrackedRequest.from(
+    http.MultipartRequest inner,
+    void Function(int sent, int total)? onProgress,
+  ) {
+    // finalize() is synchronous: it computes the boundary, sets
+    // inner.headers['content-type'] accordingly, and returns a lazy
+    // ByteStream (the actual file isn't read until something listens to
+    // this stream). Reading inner.headers right after is safe and correct.
+    final stream = inner.finalize();
+    final tracked = _ProgressTrackedRequest._(
+      inner.method,
+      inner.url,
+      inner.headers,
+      stream,
+      inner.contentLength,
+      onProgress,
+    );
+    tracked.persistentConnection = inner.persistentConnection;
+    tracked.followRedirects = inner.followRedirects;
+    tracked.maxRedirects = inner.maxRedirects;
+    return tracked;
   }
 
   @override
-  int get contentLength => _inner.contentLength;
+  int get contentLength => _contentLength;
 
   @override
   http.ByteStream finalize() {
     super.finalize();
-    final total = _inner.contentLength;
-    final source = _inner.finalize();
     var sent = 0;
-    final transformed = source.transform(
+    final transformed = _bodyStream.transform(
       StreamTransformer<List<int>, List<int>>.fromHandlers(
         handleData: (data, sink) {
           sent += data.length;
-          _onProgress?.call(sent, total);
+          _onProgress?.call(sent, _contentLength);
           sink.add(data);
         },
       ),

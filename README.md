@@ -1,41 +1,5 @@
 # Linnet — Flutter-клиент мессенджера
 
-## Зависимости (добавить в pubspec.yaml)
-
-```yaml
-dependencies:
-  flutter:
-    sdk: flutter
-
-  # уже было
-  cupertino_icons: ^1.0.8
-  http: ^1.5.0
-  shared_preferences: ^2.0.0
-
-  # состояние / сеть
-  provider: ^6.1.2
-  http_parser: ^4.0.2
-  mime: ^1.0.5
-  web_socket_channel: ^2.4.5
-
-  # медиа: выбор файлов, изображения, кэш
-  image_picker: ^1.1.2
-  file_selector: ^1.0.3
-  cached_network_image: ^3.4.1
-  url_launcher: ^6.3.1
-
-  # встроенные плееры
-  video_player: ^2.9.2
-  just_audio: ^0.9.42
-
-  # звонки (WebRTC)
-  flutter_webrtc: ^0.11.7
-
-  # системные разрешения
-  permission_handler: ^11.3.1
-```
-
-Затем:
 ```bash
 flutter clean
 flutter pub get
@@ -50,20 +14,6 @@ https://localhost:8000 или http://62.109.2.230
 `AppPermissions.ensureMicrophone()` / `ensureCamera()` запрашиваются прямо
 перед звонком (в `startCall`/`acceptCall`), не заранее. Если в видео-звонке
 отказали в камере — звонок не срывается, а превращается в аудио-звонок.
-
-### iOS (если будете добавлять платформу)
-
-В `ios/Runner/Info.plist` потребуется добавить:
-```xml
-<key>NSMicrophoneUsageDescription</key>
-<string>Микрофон нужен для звонков</string>
-<key>NSCameraUsageDescription</key>
-<string>Камера нужна для видеозвонков и фото</string>
-<key>NSPhotoLibraryUsageDescription</key>
-<string>Доступ к галерее нужен для отправки фото и видео</string>
-```
-Без этого iOS убьёт приложение при попытке запросить разрешение (это
-системное требование Apple, не связанное с кодом в `lib/`).
 
 ## Push-уведомления
 
@@ -109,16 +59,6 @@ https://localhost:8000 или http://62.109.2.230
 Экран настроек сервера (`server_settings_screen.dart`) больше не используется
 напрямую — его заменила вкладка **Настройки** (`settings_screen.dart`),
 старый файл можно удалить, если не нужен для другого.
-
-## Отправка по Enter
-
-На десктопе (Windows/macOS/Linux) Enter в поле ввода отправляет сообщение,
-Shift+Enter — переносит строку. На мобильных платформах поведение не
-менялось (Enter — перенос строки, отправка — кнопкой), так как на телефоне
-нет физической клавиши Shift и это стандартный паттерн мессенджеров.
-Реализовано без хрупких трюков с `Shortcuts`/`Actions` — по факту вставки
-`\n` в `onChanged` строка обрезается и вызывается отправка, если Shift не
-зажат (`HardwareKeyboard.instance.isShiftPressed`).
 
 ## Структура
 
