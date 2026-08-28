@@ -17,6 +17,11 @@ class CallService {
     return CallOut.fromJson(data as Map<String, dynamic>);
   }
 
+  Future<CallOut> get(String callId) async {
+    final data = await ApiClient.instance.get('/calls/$callId');
+    return CallOut.fromJson(data as Map<String, dynamic>);
+  }
+
   Future<CallOut> answer(String callId) async {
     final data = await ApiClient.instance.post('/calls/$callId/answer');
     return CallOut.fromJson(data as Map<String, dynamic>);

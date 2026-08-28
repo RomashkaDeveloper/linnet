@@ -13,6 +13,7 @@ import '../models/call.dart';
 import '../models/message.dart';
 import '../models/chat.dart';
 import '../services/chat_service.dart';
+import '../services/socket_service.dart';
 import '../widgets/avatar_widget.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/pending_upload_bubble.dart';
@@ -95,15 +96,38 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  // 5. Обработка включения/разблокировки экрана (resumed state)
+  AppLifecycleState _lastLifecycleState = AppLifecycleState.resumed;
+
+  // 5. Обработка возврата из фона / разблокировки экрана.
+  //
+  // Важно: `resumed` срабатывает не только при возврате из полноценного
+  // фона, но и просто при включении экрана, если ОС не успела перевести
+  // приложение в paused/detached. Раньше это приводило к двум проблемам:
+  //   1) при обычной разблокировке экрана лишний раз дёргался load(),
+  //      из-за чего пользователь "мигал" онлайн-статусом почти при каждом
+  //      включении экрана, а не только при реальном возврате в чат;
+  //   2) при этом сама причина пропажи входящих сообщений после глубокого
+  //      сна была не в отсутствии resumed-хендлера, а в том, что сокет
+  //      к этому моменту уже тихо умер (ОС замораживает/рвёт соединение
+  //      без onDone/onError) — просто дергать load() без переподключения
+  //      сокета не всегда помогает.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _provider.load().then((_) {
-        if (mounted) _scrollToBottom();
-      });
-      _loadChat();
-    }
+    final wasBackgrounded = _lastLifecycleState == AppLifecycleState.paused ||
+        _lastLifecycleState == AppLifecycleState.detached;
+    _lastLifecycleState = state;
+
+    if (state != AppLifecycleState.resumed) return;
+    if (!wasBackgrounded) return; // просто включили экран — ничего не делаем
+
+    // Реальный возврат из фона: сокет мог давно умереть, поэтому явно
+    // просим SocketService переподключиться, а не полагаемся на то, что
+    // старая подписка ещё жива.
+    SocketService.instance.reconnect();
+    _provider.load().then((_) {
+      if (mounted) _scrollToBottom();
+    });
+    _loadChat();
   }
 
   /// Instantly positions the list at the newest message — used when the

@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:linnet/firebase_options.dart';
 import 'package:provider/provider.dart';
@@ -6,17 +7,100 @@ import 'providers/auth_provider.dart';
 import 'providers/call_provider.dart';
 import 'providers/chat_list_provider.dart';
 import 'services/api_config.dart';
+import 'services/push_service.dart';
 import 'screens/splash_screen.dart';
+import 'screens/incoming_call_screen.dart';
+import 'screens/chat_screen.dart';
 
 const kSeedColor = Color(0xFF244B9B);
+
+/// Глобальный ключ навигатора — нужен PushService, чтобы открывать экраны
+/// по тапу на уведомление. PushService не виджет и не имеет BuildContext,
+/// поэтому обычный Navigator.of(context) ему недоступен.
+final navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Регистрировать background handler нужно ДО runApp и именно top-level
+  // функцией (см. push_service.dart) — Android поднимает для неё отдельный
+  // изолят, когда приложение полностью в фоне/убито.
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await PushService.init();
+  PushService.onNotificationRoute = _handleNotificationRoute;
+
   await ApiConfig.instance.load();
   runApp(const LinnetApp());
+}
+
+/// Обрабатывает payload вида "call:<id>" или "chat:<id>" по тапу на
+/// уведомление. Для звонков — сначала восстанавливаем состояние через API
+/// (WebSocket на холодном старте ещё может быть не подключён), и только
+/// если звонок ещё актуален (не завершился/не отклонён до открытия
+/// приложения) — открываем IncomingCallScreen.
+void _handleNotificationRoute(String payload) {
+  final parts = payload.split(':');
+  if (parts.length != 2) return;
+  final type = parts[0];
+  final id = parts[1];
+
+  _withReadyNavigator((context) {
+    if (type == 'call') {
+      final callProvider = context.read<CallProvider>();
+      callProvider.restoreIncomingCall(id).then((ok) {
+        if (!ok) return;
+        final nav = navigatorKey.currentState;
+        if (nav == null) return;
+        nav.push(MaterialPageRoute(builder: (_) => const IncomingCallScreen()));
+      });
+    } else if (type == 'chat') {
+      final nav = navigatorKey.currentState;
+      if (nav == null) return;
+      nav.push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: id)));
+    }
+  });
+}
+
+/// getInitialMessage() (холодный старт по тапу на уведомление) срабатывает
+/// внутри PushService.init(), который выполняется ДО runApp() — в этот
+/// момент MaterialApp ещё не построен (navigatorKey.currentContext ==
+/// null), И сессия ещё не восстановлена (AuthProvider.restore() внутри
+/// SplashScreen асинхронный, ApiClient.instance.token ещё null).
+///
+/// Раньше здесь ждали только готовности навигатора — из-за этого первый
+/// тап по уведомлению приходился на момент, когда токен ещё не
+/// восстановлен: запрос CallService.get() уходил без Authorization
+/// заголовка, сервер отвечал 401, restoreIncomingCall тихо возвращал
+/// false (через catch), и экран просто не открывался. Только на второй
+/// тап, когда AuthProvider.restore() уже успевал отработать, всё
+/// срабатывало. Теперь ждём оба условия.
+void _withReadyNavigator(void Function(BuildContext context) action) {
+  final context = navigatorKey.currentContext;
+  if (context == null) {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _withReadyNavigator(action);
+    });
+    return;
+  }
+
+  final authStatus = context.read<AuthProvider>().status;
+  if (authStatus == AuthStatus.unknown) {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _withReadyNavigator(action);
+    });
+    return;
+  }
+
+  if (authStatus == AuthStatus.unauthenticated) {
+    // Не залогинен — открывать чат/звонок нет смысла, пусть пользователь
+    // сначала пройдёт экран логина обычным путём.
+    return;
+  }
+
+  action(context);
 }
 
 class LinnetApp extends StatelessWidget {
@@ -31,6 +115,7 @@ class LinnetApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CallProvider()),
       ],
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'Linnet',
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(Brightness.light),

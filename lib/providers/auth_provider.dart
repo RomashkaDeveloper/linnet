@@ -27,6 +27,7 @@ class AuthProvider extends ChangeNotifier {
       status = AuthStatus.authenticated;
       SocketService.instance.connect(token);
       unawaited(PushService().register());
+      PushService().listenTokenRefresh();
       unawaited(AppPermissions.ensureNotifications());
       unawaited(_refreshMe());
     } else {
@@ -95,6 +96,7 @@ class AuthProvider extends ChangeNotifier {
     await TokenStorage.instance.save(token, user);
     SocketService.instance.connect(token);
     unawaited(PushService().register());
+    PushService().listenTokenRefresh();
     unawaited(AppPermissions.ensureNotifications());
   }
 

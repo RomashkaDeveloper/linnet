@@ -77,6 +77,52 @@ class CallProvider extends ChangeNotifier {
   // Outgoing call
   // ---------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------
+  // Восстановление после холодного старта по тапу на push-уведомление
+  // ---------------------------------------------------------------------
+
+  /// Вызывается, когда приложение открыли тапом на push-уведомление о
+  /// звонке (см. PushService.onNotificationRoute), а не через обычный
+  /// WebSocket-эвент incoming_call. К этому моменту сокет мог ещё не
+  /// подключиться, поэтому currentCall/remoteUser здесь пустые — тянем их
+  /// явно через API.
+  ///
+  /// Возвращает true, если звонок ещё актуален и state переведён в
+  /// incomingRinging (можно открывать IncomingCallScreen), false — если
+  /// звонок уже закончился/отменён (пропущен, отклонён с другого
+  /// устройства и т.п.) до того, как пользователь успел открыть приложение.
+  Future<bool> restoreIncomingCall(String callId) async {
+    // Уже в каком-то звонке (например, второй тап по тому же уведомлению,
+    // или WebSocket-эвент успел прийти первым) — ничего не делаем, чтобы не
+    // затереть уже идущее состояние.
+    if (state != CallState.idle) {
+      return state == CallState.incomingRinging &&
+          currentCall?.id == callId;
+    }
+
+    try {
+      final call = await _service.get(callId);
+      if (call.status != CallStatus.ringing) {
+        // Звонок уже принят на другом устройстве / отклонён / истёк —
+        // показывать нечего.
+        return false;
+      }
+      callType = call.callType;
+      isCaller = false;
+      remoteUser = call.caller;
+      currentCall = call;
+      state = CallState.incomingRinging;
+      notifyListeners();
+      return true;
+    } catch (_) {
+      // Звонок не найден / сеть недоступна / токен ещё не восстановлен —
+      // молча отказываемся показывать экран входящего звонка, а не падаем.
+      return false;
+    }
+  }
+
+  RTCSessionDescription? _localOffer;
+
   Future<void> startCall(String chatId, CallType type, UserPublic otherUser) async {
     if (state != CallState.idle) {
       throw Exception('Уже есть активный звонок');
@@ -105,6 +151,15 @@ class CallProvider extends ChangeNotifier {
 
       final offer = await _pc!.createOffer();
       await _pc!.setLocalDescription(offer);
+      _localOffer = offer;
+      // Отправляем сразу — если получатель уже онлайн, это самый быстрый
+      // путь к соединению. Но webrtc_signal не буферизуется на бэкенде
+      // (ConnectionManager.send_to_user молча теряет сигнал для offline
+      // получателя) — поэтому если получатель был offline и проснулся по
+      // push позже, эта отправка до него не дойдёт. Страховка — повторная
+      // отправка того же offer в _handleCallAnswered, к моменту которого
+      // получатель гарантированно на связи (иначе answer() не мог бы
+      // случиться).
       _sendSignal(call.id, 'offer', {'sdp': offer.sdp, 'type': offer.type});
     } catch (e) {
       await _cleanup();
@@ -117,6 +172,18 @@ class CallProvider extends ChangeNotifier {
     if (state == CallState.outgoingRinging) {
       state = CallState.connecting;
       notifyListeners();
+      // Переотправляем offer именно сейчас: если получатель принял звонок,
+      // он гарантированно подключён к сокету в этот момент, независимо от
+      // того, был ли он online в момент первой (ранней) отправки выше.
+      // Без этого получатель, разбуженный push-уведомлением после того,
+      // как ранний offer уже потерялся, никогда не получит SDP и останется
+      // в состоянии "Соединение…" навсегда.
+      if (_localOffer != null) {
+        _sendSignal(currentCall!.id, 'offer', {
+          'sdp': _localOffer!.sdp,
+          'type': _localOffer!.type,
+        });
+      }
     }
   }
 
@@ -133,7 +200,13 @@ class CallProvider extends ChangeNotifier {
     if (callId == null) return;
 
     if (state != CallState.idle) {
-      // Уже в звонке — новый входящий автоматически отклоняем.
+      // Тот же call_id, что мы уже показываем (например, событие догнало
+      // restoreIncomingCall после холодного старта по push) — просто
+      // игнорируем повторное событие, ничего не отклоняем.
+      if (state == CallState.incomingRinging && currentCall?.id == callId) {
+        return;
+      }
+      // Уже в другом звонке — новый входящий автоматически отклоняем.
       _service.reject(callId).catchError((_) {});
       return;
     }
@@ -416,6 +489,7 @@ class CallProvider extends ChangeNotifier {
     localRenderer.srcObject = null;
     remoteRenderer.srcObject = null;
     _pendingRemoteOffer = null;
+    _localOffer = null;
     _pendingRemoteCandidates.clear();
     _remoteDescriptionSet = false;
     micMuted = false;
