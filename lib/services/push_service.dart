@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
+import 'ringtone_service.dart';
 
 /// Top-level функция — ОБЯЗАТЕЛЬНО вне класса и с этим прагма-аннотацией.
 /// Android запускает background-хендлер FCM в отдельном изоляте, у которого
@@ -95,11 +96,9 @@ class PushService {
     // фоне (не убито).
     FirebaseMessaging.onMessageOpenedApp.listen(_handleOpenedFromMessage);
 
-    // Если приложение было полностью закрыто и запущено тапом по пушу.
-    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null) {
-      _handleOpenedFromMessage(initialMessage);
-    }
+    // getInitialMessage() намеренно НЕ вызываем здесь. init() запускается до
+    // runApp(), когда Navigator/Provider/Auth ещё не готовы. Initial message
+    // обрабатывается после первого кадра через handleInitialMessage().
   }
 
   static Future<void> _showFromMessage(RemoteMessage message) async {
@@ -177,6 +176,8 @@ class PushService {
       ),
       payload: 'call:${data['call_id']}',
     );
+    
+    await RingtoneService.start();
   }
 
   static void _onNotificationTap(NotificationResponse response) {
@@ -191,6 +192,41 @@ class PushService {
     } else if (type == 'new_message') {
       _routeFromPayload('chat:${data['chat_id']}');
     }
+  }
+
+  /// Обрабатывает FCM-сообщение, по которому приложение было запущено
+  /// после полного закрытия. Вызывается уже после runApp(), поэтому
+  /// _withReadyNavigator() может дождаться готовности AuthProvider.
+  static Future<void> handleInitialMessage() async {
+    // 1. Проверяем локальное уведомление.
+    // Именно через flutter_local_notifications создаётся уведомление
+    // входящего звонка.
+    final launchDetails =
+        await _localNotifications.getNotificationAppLaunchDetails();
+
+    if (launchDetails?.didNotificationLaunchApp ?? false) {
+      final response = launchDetails?.notificationResponse;
+
+      if (response?.payload != null) {
+        _routeFromPayload(response!.payload);
+        return;
+      }
+    }
+
+    // 2. На всякий случай оставляем обработку настоящего FCM notification,
+    // например для обычных сообщений.
+    final initialMessage =
+        await FirebaseMessaging.instance.getInitialMessage();
+
+    if (initialMessage != null) {
+      _handleOpenedFromMessage(initialMessage);
+    }
+  }
+
+  /// Убирает системное уведомление входящего звонка.
+  static Future<void> cancelIncomingCallNotification() async {
+    if (!Platform.isAndroid) return;
+    await _localNotifications.cancel(id: 1001);
   }
 
   /// Навигация по тапу на уведомление живёт вне PushService — здесь нужен

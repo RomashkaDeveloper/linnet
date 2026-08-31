@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/call_provider.dart';
 import '../models/call.dart';
 import '../widgets/avatar_widget.dart';
@@ -14,11 +15,13 @@ class CallScreen extends StatefulWidget {
 
 class _CallScreenState extends State<CallScreen> {
   late final CallProvider _callProvider;
+
   bool _popped = false;
 
   @override
   void initState() {
     super.initState();
+
     _callProvider = context.read<CallProvider>();
     _callProvider.addListener(_onChange);
   }
@@ -26,8 +29,11 @@ class _CallScreenState extends State<CallScreen> {
   void _onChange() {
     if (_callProvider.state == CallState.idle && !_popped) {
       _popped = true;
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       });
     }
   }
@@ -40,20 +46,27 @@ class _CallScreenState extends State<CallScreen> {
 
   String _fmtDuration(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
+
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
-    return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+
+    return h > 0
+        ? '$h:${two(m)}:${two(s)}'
+        : '${two(m)}:${two(s)}';
   }
 
   String _statusText(CallProvider p) {
     switch (p.state) {
       case CallState.outgoingRinging:
         return 'Вызов…';
+
       case CallState.connecting:
         return 'Соединение…';
+
       case CallState.active:
         return _fmtDuration(p.callDuration);
+
       default:
         return '';
     }
@@ -68,52 +81,111 @@ class _CallScreenState extends State<CallScreen> {
         body: SafeArea(
           child: Consumer<CallProvider>(
             builder: (context, p, _) {
-              final showRemoteVideo = p.callType == CallType.video &&
+              final showRemoteVideo =
+                  p.callType == CallType.video &&
                   p.remoteStream != null &&
-                  p.remoteStream!.getVideoTracks().isNotEmpty;
+                  p.remoteStream!
+                      .getVideoTracks()
+                      .isNotEmpty;
+
               return Stack(
                 children: [
+                  // ─────────────────────────────────────────────
+                  // REMOTE VIDEO / AVATAR
+                  // ─────────────────────────────────────────────
+
                   if (showRemoteVideo)
                     Positioned.fill(
-                      child: RTCVideoView(p.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                      child: RTCVideoView(
+                        p.remoteRenderer,
+                        objectFit: RTCVideoViewObjectFit
+                            .RTCVideoViewObjectFitCover,
+                      ),
                     )
                   else
                     Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          AvatarWidget(name: p.remoteUser?.displayName ?? '?', imageUrl: p.remoteUser?.avatarUrl, size: 120),
+                          AvatarWidget(
+                            name:
+                                p.remoteUser?.displayName ?? '?',
+                            imageUrl:
+                                p.remoteUser?.avatarUrl,
+                            size: 120,
+                          ),
                           const SizedBox(height: 16),
                           Text(
                             p.remoteUser?.displayName ?? '',
-                            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
                     ),
+
+                  // ─────────────────────────────────────────────
+                  // CALL STATUS
+                  // ─────────────────────────────────────────────
+
                   Positioned(
                     top: 16,
                     left: 0,
                     right: 0,
                     child: Center(
-                      child: Text(_statusText(p), style: const TextStyle(color: Colors.white70, fontSize: 16)),
+                      child: Text(
+                        _statusText(p),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
                   ),
-                  if (p.callType == CallType.video && p.localStream != null)
+
+                  // ─────────────────────────────────────────────
+                  // LOCAL VIDEO
+                  // ─────────────────────────────────────────────
+
+                  if (p.callType == CallType.video &&
+                      p.localStream != null)
                     Positioned(
                       top: 16,
                       right: 16,
                       child: Container(
                         width: 100,
                         height: 140,
-                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: Colors.black),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.black,
+                        ),
                         clipBehavior: Clip.antiAlias,
                         child: p.cameraOff
-                            ? const Center(child: Icon(Icons.videocam_off, color: Colors.white54))
-                            : RTCVideoView(p.localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                            ? const Center(
+                                child: Icon(
+                                  Icons.videocam_off,
+                                  color: Colors.white54,
+                                ),
+                              )
+                            : RTCVideoView(
+                                p.localRenderer,
+                                mirror: true,
+                                objectFit:
+                                    RTCVideoViewObjectFit
+                                        .RTCVideoViewObjectFitCover,
+                              ),
                       ),
                     ),
-                  if (p.callType == CallType.video && p.state == CallState.active)
+
+                  // ─────────────────────────────────────────────
+                  // SWITCH CAMERA
+                  // ─────────────────────────────────────────────
+
+                  if (p.callType == CallType.video &&
+                      p.state == CallState.active)
                     Positioned(
                       bottom: 100,
                       right: 16,
@@ -125,6 +197,11 @@ class _CallScreenState extends State<CallScreen> {
                         size: 44,
                       ),
                     ),
+
+                  // ─────────────────────────────────────────────
+                  // CALL CONTROLS
+                  // ─────────────────────────────────────────────
+
                   Positioned(
                     left: 0,
                     right: 0,
@@ -132,13 +209,17 @@ class _CallScreenState extends State<CallScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        // 1. МИКРОФОН
                         _controlButton(
                           icon: p.micMuted ? Icons.mic_off : Icons.mic,
                           onTap: p.toggleMic,
                           background: p.micMuted ? Colors.white : Colors.white24,
                           iconColor: p.micMuted ? Colors.black : Colors.white,
                         ),
-                        const SizedBox(width: 20),
+
+                        const SizedBox(width: 16),
+
+                        // 2. СБРОС (Красная кнопка по центру)
                         _controlButton(
                           icon: Icons.call_end,
                           onTap: () => p.hangUp(),
@@ -146,14 +227,27 @@ class _CallScreenState extends State<CallScreen> {
                           iconColor: Colors.white,
                           size: 68,
                         ),
-                        const SizedBox(width: 20),
-                        if (p.callType == CallType.video)
+
+                        const SizedBox(width: 16),
+
+                        // 3. ДИНАМИК (Громкая связь)
+                        _controlButton(
+                          icon: p.speakerEnabled ? Icons.volume_up : Icons.volume_down,
+                          onTap: p.toggleSpeaker,
+                          background: p.speakerEnabled ? Colors.white : Colors.white24,
+                          iconColor: p.speakerEnabled ? Colors.black : Colors.white,
+                        ),
+
+                        // 4. КАМЕРА (если видеозвонок)
+                        if (p.callType == CallType.video) ...[
+                          const SizedBox(width: 16),
                           _controlButton(
                             icon: p.cameraOff ? Icons.videocam_off : Icons.videocam,
                             onTap: p.toggleCamera,
                             background: p.cameraOff ? Colors.white : Colors.white24,
                             iconColor: p.cameraOff ? Colors.black : Colors.white,
                           ),
+                        ],
                       ],
                     ),
                   ),
@@ -178,8 +272,15 @@ class _CallScreenState extends State<CallScreen> {
       child: Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(color: background, shape: BoxShape.circle),
-        child: Icon(icon, color: iconColor, size: size * 0.45),
+        decoration: BoxDecoration(
+          color: background,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          color: iconColor,
+          size: size * 0.45,
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import '../providers/call_provider.dart';
 import '../models/call.dart';
 import '../widgets/avatar_widget.dart';
 import 'call_screen.dart';
+import '../services/push_service.dart';
 
 class IncomingCallScreen extends StatefulWidget {
   const IncomingCallScreen({super.key});
@@ -43,6 +44,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
     if (_handled) return;
     _handled = true;
     try {
+      await PushService.cancelIncomingCallNotification();
       await _callProvider.acceptCall();
       if (mounted) {
         Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const CallScreen()));
@@ -58,6 +60,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
   Future<void> _decline() async {
     if (_handled) return;
     _handled = true;
+    await PushService.cancelIncomingCallNotification();
     await _callProvider.declineCall();
     if (mounted) Navigator.of(context).pop();
   }

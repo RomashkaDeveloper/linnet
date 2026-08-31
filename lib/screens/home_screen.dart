@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:convert';
+
 import '../providers/auth_provider.dart';
 import '../providers/chat_list_provider.dart';
 import '../models/chat.dart';
@@ -20,10 +25,16 @@ class _HomeScreenState extends State<HomeScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  String? _latestVersion;
+  String? _downloadUrl;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => context.read<ChatListProvider>().load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ChatListProvider>().load();
+      _checkForUpdates();
+    });
   }
 
   @override
@@ -32,10 +43,62 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  /// Проверяет последнюю версию релизов на GitHub
+  Future<void> _checkForUpdates() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version.trim();
+
+      final response = await http.get(
+        Uri.parse('https://api.github.com/repos/RomashkaDeveloper/linnet/releases/latest'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final tag = (data['tag_name'] as String? ?? '').replaceAll('v', '').trim();
+
+        if (tag.isNotEmpty && _isNewerVersion(currentVersion, tag)) {
+          if (!mounted) return;
+          setState(() {
+            _latestVersion = tag;
+            _downloadUrl =
+                'https://github.com/RomashkaDeveloper/linnet/releases/download/$tag/linnet-$tag.apk';
+          });
+        }
+      }
+    } catch (_) {
+      // Игнорируем ошибки сети при проверке обновлений
+    }
+  }
+
+  /// Простая проверка версии (например, 1.0.7 > 1.0.6)
+  bool _isNewerVersion(String current, String latest) {
+    final currentParts = current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final latestParts = latest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+    for (int i = 0; i < latestParts.length; i++) {
+      final curr = i < currentParts.length ? currentParts[i] : 0;
+      if (latestParts[i] > curr) return true;
+      if (latestParts[i] < curr) return false;
+    }
+    return false;
+  }
+
+  /// Открытие ссылки для скачивания APK
+  Future<void> _downloadUpdate() async {
+    if (_downloadUrl == null) return;
+    final uri = Uri.parse(_downloadUrl!);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   void _showChatOptions(ChatOut chat, String currentUserId) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SafeArea(
         child: Wrap(
           children: [
@@ -77,7 +140,9 @@ class _HomeScreenState extends State<HomeScreen> {
       await context.read<ChatListProvider>().deleteChat(chat.id);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Не удалось удалить чат: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось удалить чат: $e')),
+        );
       }
     }
   }
@@ -97,8 +162,15 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Linnet', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
+          // Кнопка обновления (отображается только при наличии новой версии)
+          if (_latestVersion != null)
+            IconButton(
+              icon: const Icon(Icons.download_for_offline_rounded, color: Colors.greenAccent),
+              tooltip: 'Обновить до $_latestVersion',
+              onPressed: _downloadUpdate,
+            ),
           Padding(
-            padding: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.only(right: 12, left: 4),
             child: GestureDetector(
               onTap: () =>
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
@@ -136,7 +208,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('Не удалось загрузить чаты\n${chatList.error}', textAlign: TextAlign.center),
+                        Text('Не удалось загрузить чаты\n${chatList.error}',
+                            textAlign: TextAlign.center),
                         const SizedBox(height: 12),
                         OutlinedButton(
                           onPressed: () => context.read<ChatListProvider>().load(),
@@ -153,7 +226,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.chat_bubble_outline_rounded, size: 56, color: Theme.of(context).colorScheme.outline),
+                      Icon(Icons.chat_bubble_outline_rounded,
+                          size: 56, color: Theme.of(context).colorScheme.outline),
                       const SizedBox(height: 12),
                       const Text('Пока нет чатов'),
                       const SizedBox(height: 4),
@@ -197,7 +271,8 @@ class _HomeScreenState extends State<HomeScreen> {
             );
             if (chat != null && mounted) {
               context.read<ChatListProvider>().upsertChat(chat);
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: chat.id)));
+              Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => ChatScreen(chatId: chat.id)));
             }
           },
           child: const Icon(Icons.add),

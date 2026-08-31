@@ -29,10 +29,11 @@ Future<void> main() async {
   // функцией (см. push_service.dart) — Android поднимает для неё отдельный
   // изолят, когда приложение полностью в фоне/убито.
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  await PushService.init();
-  PushService.onNotificationRoute = _handleNotificationRoute;
-
   await ApiConfig.instance.load();
+
+  PushService.onNotificationRoute = _handleNotificationRoute;
+  await PushService.init();
+
   runApp(const LinnetApp());
 }
 
@@ -64,19 +65,10 @@ void _handleNotificationRoute(String payload) {
   });
 }
 
-/// getInitialMessage() (холодный старт по тапу на уведомление) срабатывает
-/// внутри PushService.init(), который выполняется ДО runApp() — в этот
-/// момент MaterialApp ещё не построен (navigatorKey.currentContext ==
-/// null), И сессия ещё не восстановлена (AuthProvider.restore() внутри
-/// SplashScreen асинхронный, ApiClient.instance.token ещё null).
-///
-/// Раньше здесь ждали только готовности навигатора — из-за этого первый
-/// тап по уведомлению приходился на момент, когда токен ещё не
-/// восстановлен: запрос CallService.get() уходил без Authorization
-/// заголовка, сервер отвечал 401, restoreIncomingCall тихо возвращал
-/// false (через catch), и экран просто не открывался. Только на второй
-/// тап, когда AuthProvider.restore() уже успевал отработать, всё
-/// срабатывало. Теперь ждём оба условия.
+/// После запуска приложения _withReadyNavigator() ждёт и готовность
+/// Navigator, и завершение восстановления авторизации. Это важно для
+/// холодного старта по уведомлению: restoreIncomingCall() должен иметь
+/// действующий токен, иначе API-запрос за данными звонка может получить 401.
 void _withReadyNavigator(void Function(BuildContext context) action) {
   final context = navigatorKey.currentContext;
   if (context == null) {
@@ -103,8 +95,21 @@ void _withReadyNavigator(void Function(BuildContext context) action) {
   action(context);
 }
 
-class LinnetApp extends StatelessWidget {
+class LinnetApp extends StatefulWidget {
   const LinnetApp({super.key});
+
+  @override
+  State<LinnetApp> createState() => _LinnetAppState();
+}
+
+class _LinnetAppState extends State<LinnetApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PushService.handleInitialMessage();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
