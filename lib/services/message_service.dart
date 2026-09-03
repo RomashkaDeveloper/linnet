@@ -56,4 +56,14 @@ class MessageService {
   Future<void> deleteMessage(String chatId, String messageId) async {
     await ApiClient.instance.delete('/chats/$chatId/messages/$messageId');
   }
+
+  /// Forwards [messageId] from [fromChatId] into [toChatId]. Requires the
+  /// backend POST /chats/{chatId}/messages/{messageId}/forward route.
+  Future<MessageOut> forwardMessage(String fromChatId, String messageId, String toChatId) async {
+    final data = await ApiClient.instance.post(
+      '/chats/$fromChatId/messages/$messageId/forward',
+      body: {'to_chat_id': toChatId},
+    );
+    return MessageOut.fromJson(data as Map<String, dynamic>);
+  }
 }

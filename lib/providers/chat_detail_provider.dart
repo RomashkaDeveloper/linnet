@@ -25,12 +25,31 @@ class ChatDetailProvider extends ChangeNotifier {
   /// failure keeps them with an error + retry/dismiss option).
   final List<PendingUpload> pendingUploads = [];
 
+  /// ID of the last message the other participant has read, as reported by
+  /// the `read_receipt` socket event. Used to decide whether a checkmark
+  /// on our own messages should render as "read" (double, colored) vs
+  /// "sent" (single). For group chats this only tracks the most recent
+  /// read receipt received, not a full per-member read state.
+  String? otherUserLastReadMessageId;
+
   ChatDetailProvider(this.chatId) {
     _sub = SocketService.instance.events.listen(_onEvent);
   }
 
   void _sortAscending() {
     messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
+  /// Whether [messageId] has been read by the other participant, based on
+  /// the last known read receipt. Everything at or before that message in
+  /// the (ascending-sorted) list counts as read.
+  bool isReadByOther(String messageId) {
+    final lastReadId = otherUserLastReadMessageId;
+    if (lastReadId == null) return false;
+    final lastReadIdx = messages.indexWhere((m) => m.id == lastReadId);
+    final thisIdx = messages.indexWhere((m) => m.id == messageId);
+    if (lastReadIdx == -1 || thisIdx == -1) return false;
+    return thisIdx <= lastReadIdx;
   }
 
   Future<void> load() async {
@@ -160,6 +179,10 @@ class ChatDetailProvider extends ChangeNotifier {
     }
   }
 
+  Future<MessageOut> forwardMessage(String messageId, String toChatId) {
+    return _service.forwardMessage(chatId, messageId, toChatId);
+  }
+
   void notifyTyping() => SocketService.instance.sendTyping(chatId);
 
   void notifyRead(String messageId) => SocketService.instance.sendRead(chatId, messageId);
@@ -194,7 +217,7 @@ class ChatDetailProvider extends ChangeNotifier {
         _handleTyping(event);
         break;
       case 'read_receipt':
-        notifyListeners();
+        _handleReadReceipt(event);
         break;
     }
   }
@@ -264,6 +287,17 @@ class ChatDetailProvider extends ChangeNotifier {
       typingUserIds.remove(userId);
       notifyListeners();
     });
+  }
+
+  /// Handles a `read_receipt` event pushed by the backend when a member of
+  /// this chat marks it as read (see PUT /chats/{id}/read on the server).
+  /// We only care about receipts from *other* users — our own read state
+  /// doesn't need a checkmark on our own messages.
+  void _handleReadReceipt(Map<String, dynamic> event) {
+    final messageId = event['message_id'] as String?;
+    if (messageId == null) return;
+    otherUserLastReadMessageId = messageId;
+    notifyListeners();
   }
 
   @override

@@ -21,6 +21,8 @@ class MessageOut {
   final bool isDeleted;
   final DateTime createdAt;
   final DateTime? editedAt;
+  final String? forwardedFromId;
+  final UserPublic? forwardedFrom;
 
   MessageOut({
     required this.id,
@@ -38,6 +40,8 @@ class MessageOut {
     required this.isDeleted,
     required this.createdAt,
     this.editedAt,
+    this.forwardedFromId,
+    this.forwardedFrom,
   });
 
   factory MessageOut.fromJson(Map<String, dynamic> json) => MessageOut(
@@ -63,6 +67,10 @@ class MessageOut {
         editedAt: json['edited_at'] != null
             ? DateTime.tryParse(json['edited_at'] as String)
             : null,
+        forwardedFromId: json['forwarded_from_id'] as String?,
+        forwardedFrom: json['forwarded_from'] != null
+            ? UserPublic.fromJson(json['forwarded_from'] as Map<String, dynamic>)
+            : null,
       );
 
   MessageOut copyWith({
@@ -87,5 +95,7 @@ class MessageOut {
         isDeleted: isDeleted ?? this.isDeleted,
         createdAt: createdAt,
         editedAt: editedAt ?? this.editedAt,
+        forwardedFromId: forwardedFromId,
+        forwardedFrom: forwardedFrom,
       );
 }

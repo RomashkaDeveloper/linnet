@@ -12,6 +12,11 @@ class MessageBubble extends StatelessWidget {
   final MessageOut message;
   final bool isMine;
   final bool showSender;
+
+  /// Whether the other participant has read this message. Only rendered
+  /// when [isMine] is true — checkmarks are only meaningful on our own
+  /// outgoing messages.
+  final bool isRead;
   final MessageOut? replyMessage;
   final VoidCallback? onLongPress;
 
@@ -20,6 +25,7 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     required this.isMine,
     this.showSender = false,
+    this.isRead = false,
     this.replyMessage,
     this.onLongPress,
   });
@@ -57,6 +63,25 @@ class MessageBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (message.forwardedFrom != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.forward_outlined, size: 13, color: textColor.withOpacity(0.65)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Переслано от ${message.forwardedFrom!.displayName}',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontStyle: FontStyle.italic,
+                          color: textColor.withOpacity(0.65),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               if (showSender && message.sender != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -80,6 +105,14 @@ class MessageBubble extends StatelessWidget {
                       ),
                     ),
                   Text(formatClock(message.createdAt), style: TextStyle(fontSize: 10.5, color: textColor.withOpacity(0.65))),
+                  if (isMine && !message.isDeleted) ...[
+                    const SizedBox(width: 3),
+                    Icon(
+                      isRead ? Icons.done_all : Icons.done,
+                      size: 14,
+                      color: isRead ? Colors.lightBlueAccent : textColor.withOpacity(0.65),
+                    ),
+                  ],
                 ],
               ),
             ],

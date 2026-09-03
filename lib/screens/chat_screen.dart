@@ -20,6 +20,7 @@ import '../widgets/pending_upload_bubble.dart';
 import '../utils/formatters.dart';
 import 'call_screen.dart';
 import 'chat_info_screen.dart';
+import 'forward_screen.dart';
 import 'user_profile_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -53,6 +54,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _provider = ChatDetailProvider(widget.chatId);
     _provider.load().then((_) {
       if (mounted) _jumpToBottom();
+      if (_provider.messages.isNotEmpty) {
+        _provider.notifyRead(_provider.messages.last.id);
+      }
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -93,6 +97,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_provider.hasNewMessage) {
       _provider.clearNewMessageFlag();
       _scrollToBottom();
+      if (_provider.messages.isNotEmpty) {
+        _provider.notifyRead(_provider.messages.last.id);
+      }
     }
   }
 
@@ -327,6 +334,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 setState(() => _replyTo = msg);
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.forward_outlined),
+              title: const Text('Переслать'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _forwardMessage(msg);
+              },
+            ),
             if (isMine && msg.messageType == MessageType.text)
               ListTile(
                 leading: const Icon(Icons.edit_outlined),
@@ -352,6 +367,27 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  Future<void> _forwardMessage(MessageOut msg) async {
+    final targetChatId = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const ForwardScreen()),
+    );
+    if (targetChatId == null || !mounted) return;
+    try {
+      await _provider.forwardMessage(msg.id, targetChatId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Сообщение переслано')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось переслать: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -487,6 +523,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         message: msg,
                         isMine: isMine,
                         showSender: chat?.type == ChatType.group && !isMine,
+                        isRead: isMine && p.isReadByOther(msg.id),
                         replyMessage: reply,
                         onLongPress: () => _onMessageLongPress(msg, isMine),
                       );
