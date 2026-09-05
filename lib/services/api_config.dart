@@ -1,10 +1,11 @@
 import 'package:shared_preferences/shared_preferences.dart';
+
 class ApiConfig {
   ApiConfig._();
   static final ApiConfig instance = ApiConfig._();
 
   static const _prefsKey = 'base_url';
-  static const defaultBaseUrl = 'http://62.109.2.230';
+  static const defaultBaseUrl = 'https://62.109.2.230';
 
   String baseUrl = defaultBaseUrl;
 
