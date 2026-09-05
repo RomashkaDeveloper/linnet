@@ -43,6 +43,18 @@ class ChatDetailProvider extends ChangeNotifier {
   /// Whether [messageId] has been read by the other participant, based on
   /// the last known read receipt. Everything at or before that message in
   /// the (ascending-sorted) list counts as read.
+  /// Seeds [otherUserLastReadMessageId] from data already known when the
+  /// chat is opened (the ChatOut fetched by the chat list / chat screen),
+  /// so the read checkmarks reflect real state immediately — instead of
+  /// only updating once a live `read_receipt` socket event arrives, which
+  /// otherwise made checkmarks reset to "sent" every time the chat was
+  /// reopened even though the other person had already read it.
+  void seedReadState(String? lastReadMessageId) {
+    if (lastReadMessageId == null) return;
+    otherUserLastReadMessageId = lastReadMessageId;
+    notifyListeners();
+  }
+
   bool isReadByOther(String messageId) {
     final lastReadId = otherUserLastReadMessageId;
     if (lastReadId == null) return false;

@@ -15,8 +15,14 @@ class ChatMemberOut {
   final UserPublic user;
   final MemberRole role;
   final DateTime joinedAt;
+  final String? lastReadMessageId;
 
-  ChatMemberOut({required this.user, required this.role, required this.joinedAt});
+  ChatMemberOut({
+    required this.user,
+    required this.role,
+    required this.joinedAt,
+    this.lastReadMessageId,
+  });
 
   factory ChatMemberOut.fromJson(Map<String, dynamic> json) => ChatMemberOut(
         user: UserPublic.fromJson(json['user'] as Map<String, dynamic>),
@@ -24,6 +30,7 @@ class ChatMemberOut {
         joinedAt:
             DateTime.tryParse(json['joined_at'] as String? ?? '') ??
                 DateTime.now(),
+        lastReadMessageId: json['last_read_message_id'] as String?,
       );
 }
 
@@ -97,5 +104,17 @@ class ChatOut {
       if (m.user.id != currentUserId) return m.user;
     }
     return members.isNotEmpty ? members.first.user : null;
+  }
+
+  /// The last message id the other participant (private chats only) has
+  /// read, according to the server's membership record. Used to seed the
+  /// read-receipt state when a chat is (re)opened, before any live
+  /// `read_receipt` socket event has arrived in this session.
+  String? otherUserLastReadMessageId(String currentUserId) {
+    if (type != ChatType.private) return null;
+    for (final m in members) {
+      if (m.user.id != currentUserId) return m.lastReadMessageId;
+    }
+    return null;
   }
 }

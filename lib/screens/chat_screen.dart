@@ -53,12 +53,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     _provider = ChatDetailProvider(widget.chatId);
     _provider.load().then((_) {
-      if (mounted) _jumpToBottom();
+      if (mounted) {
+        _jumpToBottom();
+      }
+
       if (_provider.messages.isNotEmpty) {
-        _provider.notifyRead(_provider.messages.last.id);
+        ChatService().markRead(widget.chatId);
       }
     });
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chatListProvider?.setActiveChat(widget.chatId);
     });
@@ -97,8 +99,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_provider.hasNewMessage) {
       _provider.clearNewMessageFlag();
       _scrollToBottom();
+
       if (_provider.messages.isNotEmpty) {
-        _provider.notifyRead(_provider.messages.last.id);
+        ChatService().markRead(widget.chatId);
       }
     }
   }
