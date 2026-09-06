@@ -1,7 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, HardwareKeyboard;
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
@@ -52,23 +52,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     _provider = ChatDetailProvider(widget.chatId);
-    _provider.load().then((_) {
-      if (mounted) {
-        _jumpToBottom();
-      }
-
-      if (_provider.messages.isNotEmpty) {
-        ChatService().markRead(widget.chatId);
-      }
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _chatListProvider?.setActiveChat(widget.chatId);
-    });
-
-    // 1. Прокрутка вниз при получении новых сообщений от собеседника
     _provider.addListener(_onProviderUpdated);
 
-    _loadChat();
+    // Последовательная инициализация загрузки и отметки о прочтении
+    _initChat();
 
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.hasClients && _scrollCtrl.position.pixels <= 80) {
@@ -76,7 +63,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     });
 
-    // 2. Прокрутка вниз при открытии клавиатуры на iOS и Android
+    // Прокрутка вниз при открытии клавиатуры
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) {
         Future.delayed(const Duration(milliseconds: 300), () {
@@ -86,14 +73,42 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _initChat() async {
+    // 1. Сначала загружаем данные чата (для получения last_read_message_id)
+    await _loadChat();
+    
+    // 2. Затем загружаем сообщения
+    await _provider.load();
+    
+    if (!mounted) return;
+
+    _jumpToBottom();
+
+    // 3. Синхронизируем состояние прочтения в провайдере
+    if (_chat != null) {
+      final auth = context.read<AuthProvider>();
+      final currentUserId = auth.currentUser?.id ?? '';
+      _provider.seedReadState(_chat!.otherUserLastReadMessageId(currentUserId));
+    }
+
+    // 4. Дожидаемся отправки запроса прочтения на сервер
+    if (_provider.messages.isNotEmpty) {
+      try {
+        await ChatService().markRead(widget.chatId);
+        if (mounted) {
+          context.read<ChatListProvider>().markRead(widget.chatId);
+        }
+      } catch (_) {}
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Переменную с контекстом запоминаем до того, как виджет будет уничтожен
     _chatListProvider = context.read<ChatListProvider>();
   }
 
-  void _onProviderUpdated() {
+  void _onProviderUpdated() async {
     if (!mounted) return;
 
     if (_provider.hasNewMessage) {
@@ -101,26 +116,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _scrollToBottom();
 
       if (_provider.messages.isNotEmpty) {
-        ChatService().markRead(widget.chatId);
+        try {
+          await ChatService().markRead(widget.chatId);
+          if (mounted) {
+            context.read<ChatListProvider>().markRead(widget.chatId);
+          }
+        } catch (_) {}
       }
     }
   }
 
   AppLifecycleState _lastLifecycleState = AppLifecycleState.resumed;
 
-  // 5. Обработка возврата из фона / разблокировки экрана.
-  //
-  // Важно: `resumed` срабатывает не только при возврате из полноценного
-  // фона, но и просто при включении экрана, если ОС не успела перевести
-  // приложение в paused/detached. Раньше это приводило к двум проблемам:
-  //   1) при обычной разблокировке экрана лишний раз дёргался load(),
-  //      из-за чего пользователь "мигал" онлайн-статусом почти при каждом
-  //      включении экрана, а не только при реальном возврате в чат;
-  //   2) при этом сама причина пропажи входящих сообщений после глубокого
-  //      сна была не в отсутствии resumed-хендлера, а в том, что сокет
-  //      к этому моменту уже тихо умер (ОС замораживает/рвёт соединение
-  //      без onDone/onError) — просто дергать load() без переподключения
-  //      сокета не всегда помогает.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final wasBackgrounded = _lastLifecycleState == AppLifecycleState.paused ||
@@ -128,20 +135,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _lastLifecycleState = state;
 
     if (state != AppLifecycleState.resumed) return;
-    if (!wasBackgrounded) return; // просто включили экран — ничего не делаем
+    if (!wasBackgrounded) return;
 
-    // Реальный возврат из фона: сокет мог давно умереть, поэтому явно
-    // просим SocketService переподключиться, а не полагаемся на то, что
-    // старая подписка ещё жива.
     SocketService.instance.reconnect();
     _provider.load().then((_) {
-      if (mounted) _scrollToBottom();
+      if (mounted) {
+        _scrollToBottom();
+        ChatService().markRead(widget.chatId);
+      }
     });
     _loadChat();
   }
 
-  /// Instantly positions the list at the newest message — used when the
-  /// chat first opens, so the user isn't dropped at the oldest message.
   void _jumpToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollCtrl.hasClients) {
@@ -154,8 +159,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final chat = await ChatService().getChat(widget.chatId);
       if (mounted) setState(() => _chat = chat);
-      await ChatService().markRead(widget.chatId);
-      if (mounted) context.read<ChatListProvider>().markRead(widget.chatId);
     } catch (_) {}
   }
 
@@ -183,7 +186,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-  // 3. Убираем фокус с клавиатуры перед просмотром медиафайлов
   void _unfocus() {
     _focusNode.unfocus();
     FocusScope.of(context).unfocus();
@@ -209,9 +211,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка отправки: $e')));
     }
-    // await _provider.sendText(text, replyToId: replyId);
-    // _provider.stopTyping();
-    // _scrollToBottom();
   }
 
   Future<void> _initiateCall(CallType type) async {
@@ -329,6 +328,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       builder: (ctx) => SafeArea(
         child: Wrap(
           children: [
+            if (msg.messageType == MessageType.text && (msg.content?.isNotEmpty ?? false))
+              ListTile(
+                leading: const Icon(Icons.copy_outlined),
+                title: const Text('Копировать'),
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: msg.content!));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Текст сообщения скопирован')),
+                    );
+                  }
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.reply_outlined),
               title: const Text('Ответить'),
@@ -593,8 +606,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     focusNode: _focusNode,
                     minLines: 1,
                     maxLines: 5,
-                    textInputAction: TextInputAction.send, // 4. Замена переноса строки на кнопку отправки
-                    onSubmitted: (_) => _send(), // 4. Отправка по кнопке с клавиатуры
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _send(),
                     textCapitalization: TextCapitalization.sentences,
                     onChanged: (value) {
                       _provider.notifyTyping();

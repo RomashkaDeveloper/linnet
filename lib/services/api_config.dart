@@ -5,7 +5,7 @@ class ApiConfig {
   static final ApiConfig instance = ApiConfig._();
 
   static const _prefsKey = 'base_url';
-  static const defaultBaseUrl = 'https://62.109.2.230';
+  static const defaultBaseUrl = 'https://linnet-app.ru';
 
   String baseUrl = defaultBaseUrl;
 
