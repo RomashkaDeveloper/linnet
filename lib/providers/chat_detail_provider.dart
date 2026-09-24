@@ -259,9 +259,21 @@ class ChatDetailProvider extends ChangeNotifier {
       final raw = event['message'] ?? event;
       final msg = MessageOut.fromJson(raw as Map<String, dynamic>);
 
-      if (!messages.any((m) => m.id == msg.id)) {
+      // Сообщение уже пришло — отправитель по определению закончил печатать.
+      // Без этого индикатор "печатает…" висел бы ещё до 3 секунд (см. таймер
+      // в _handleTyping), даже когда сообщение уже отображено в чате.
+      final wasTyping = typingUserIds.remove(msg.senderId);
+      if (wasTyping) {
+        _typingClearTimer?.cancel();
+      }
+
+      final isNewMessage = !messages.any((m) => m.id == msg.id);
+      if (isNewMessage) {
         messages.add(msg);
         hasNewMessage = true;
+      }
+
+      if (isNewMessage || wasTyping) {
         notifyListeners();
       }
     } catch (_) {}
